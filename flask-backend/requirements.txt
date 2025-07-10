@@ -1,0 +1,22 @@
+Flask==3.0.0
+Flask-CORS==4.0.0
+requests==2.31.0
+google-generativeai>=0.3.0
+python-dotenv>=1.0.0
+beautifulsoup4>=4.12.0
+selenium>=4.15.0
+googlesearch-python>=1.2.3
+
+# Optional dependencies (install if needed)
+# Pillow>=10.0.0
+# numpy>=1.24.0
+
+# AI dependencies (for full AI features)
+# transformers>=4.35.0
+# torch>=2.0.0
+# torchaudio>=2.0.0
+# soundfile>=0.12.0
+# opencv-python>=4.8.0
+# beautifulsoup4>=4.12.0
+# selenium>=4.15.0
+# scipy>=1.11.0 

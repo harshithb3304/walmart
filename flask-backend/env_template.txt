@@ -1,0 +1,13 @@
+# Copy this file to .env and add your actual API key
+# Get your API key from: https://makersuite.google.com/app/apikey
+
+# Required for enhanced AI responses with web search
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Optional: Add rate limiting for web searches (requests per minute)
+SEARCH_RATE_LIMIT=10
+
+# Optional: Enable/disable specific search features
+ENABLE_WALMART_SEARCH=true
+ENABLE_WEB_SEARCH=true
+ENABLE_TECH_SUPPORT=true 
