@@ -15,6 +15,7 @@ export default function VoiceInterface({ isListening, setIsListening, onVoiceInp
   const [isSupported, setIsSupported] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
   const recognitionRef = useRef<any>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isInitializedRef = useRef(false);
@@ -29,7 +30,7 @@ export default function VoiceInterface({ isListening, setIsListening, onVoiceInp
         const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
         recognitionRef.current = new SpeechRecognition();
 
-        recognitionRef.current.continuous = true;
+        recognitionRef.current.continuous = true; // Changed back to true for natural speech with pauses
         recognitionRef.current.interimResults = true;
         recognitionRef.current.lang = 'en-US';
         recognitionRef.current.maxAlternatives = 1;
@@ -53,7 +54,15 @@ export default function VoiceInterface({ isListening, setIsListening, onVoiceInp
           console.log('Voice recognition output:', currentTranscript);
 
           if (finalTranscript.trim()) {
+            setIsProcessing(true);
             onVoiceInput(finalTranscript.trim());
+            // Stop listening after a short delay to feel more natural
+            console.log('Final transcript sent, stopping recognition');
+            setTimeout(() => {
+              stopListening();
+              setIsProcessing(false);
+            }, 1000); // Increased delay for more natural feeling
+            return;
           }
 
           // Reset timeout on speech activity
@@ -61,11 +70,11 @@ export default function VoiceInterface({ isListening, setIsListening, onVoiceInp
             clearTimeout(timeoutRef.current);
           }
 
-          // Set a new timeout for silence detection after speech activity
+          // Set a longer timeout for silence detection after speech activity
           timeoutRef.current = setTimeout(() => {
-            console.log('3 seconds of silence detected, stopping recognition');
+            console.log('5 seconds of silence detected, stopping recognition');
             stopListening();
-          }, 3000); // Stop after 3 seconds of silence
+          }, 5000); // Increased to 5 seconds of silence for more natural speech
 
           setErrorMsg('');
         };
@@ -77,7 +86,7 @@ export default function VoiceInterface({ isListening, setIsListening, onVoiceInp
 
         recognitionRef.current.onend = () => {
           console.log('Speech recognition: service ended');
-          // Don't auto-restart - user must click button to start again
+          // Auto-stop when recognition ends naturally
           setIsListening(false);
           setTranscript('');
           clearTimeouts();
@@ -174,6 +183,7 @@ export default function VoiceInterface({ isListening, setIsListening, onVoiceInp
     setIsListening(false);
     setTranscript('');
     setErrorMsg('');
+    setIsProcessing(false);
     clearTimeouts();
   };
 
@@ -194,14 +204,29 @@ export default function VoiceInterface({ isListening, setIsListening, onVoiceInp
       {/* Voice Input Button */}
       <button
         onClick={handleButtonClick}
-        disabled={!isSupported}
-        className={`p-2 rounded-lg transition-all duration-200 ${isListening
+        disabled={!isSupported || isProcessing}
+        className={`p-2 rounded-lg transition-all duration-200 ${
+          isProcessing
+            ? 'bg-yellow-500 text-white animate-pulse'
+            : isListening
             ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
             : 'bg-blue-500 hover:bg-blue-600 text-white'
-          } ${!isSupported ? 'opacity-50 cursor-not-allowed' : ''}`}
-        title={isListening ? 'Stop listening' : 'Start voice input'}
+          } ${!isSupported || isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+        title={
+          isProcessing 
+            ? 'Processing voice input...'
+            : isListening 
+            ? 'Stop listening' 
+            : 'Start voice input'
+        }
       >
-        {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+        {isProcessing ? (
+          <div className="h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+        ) : isListening ? (
+          <MicOff className="h-5 w-5" />
+        ) : (
+          <Mic className="h-5 w-5" />
+        )}
       </button>
 
       {/* Error Message Display */}

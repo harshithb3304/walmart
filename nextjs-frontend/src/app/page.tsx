@@ -312,14 +312,14 @@ interface CartItem {
                   setIsListening={setIsListening}
                   onVoiceInput={(text) => {
                     setChatInput(text);
-                    // Auto-send voice input after a short delay
+                    // Send voice input immediately to backend
                     setTimeout(() => {
                       if (text.trim()) {
-                        // Manually trigger the send message with the voice input
+                        // Create a custom send function to ensure we use the voice text
                         const sendVoiceMessage = async () => {
                           const userMessage = { role: 'user' as const, message: text, timestamp: new Date().toISOString() };
                           setMessages(prev => [...prev, userMessage]);
-                          setChatInput('');
+                          setChatInput(''); // Clear input after sending
                           setIsLoading(true);
 
                           try {
@@ -361,14 +361,20 @@ interface CartItem {
                               loadCart();
                             }
                           } catch (error) {
-                            console.error('Chat error:', error);
+                            console.error('Voice chat error:', error);
+                            const errorMessage = { 
+                              role: 'assistant' as const, 
+                              message: 'Sorry, there was an error processing your voice input. Please try again.', 
+                              timestamp: new Date().toISOString() 
+                            };
+                            setMessages(prev => [...prev, errorMessage]);
                           } finally {
                             setIsLoading(false);
                           }
                         };
                         sendVoiceMessage();
                       }
-                    }, 500);
+                    }, 150); // Slightly longer delay to ensure state updates
                   }}
                 />
                 <button
