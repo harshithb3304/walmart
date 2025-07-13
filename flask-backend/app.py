@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import json
 import os
+import random
 from datetime import datetime
 import logging
 import base64
@@ -58,7 +59,7 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 if GEMINI_AVAILABLE and GEMINI_API_KEY and genai:
     try:
         genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-2.0-flash')
         print("✅ Gemini AI configured successfully")
     except Exception as e:
         logger.warning(f"Failed to configure Gemini: {e}")
@@ -127,41 +128,890 @@ def text_to_speech():
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
-    """Handle conversational AI requests using Gemini"""
+    """Enhanced conversational AI shopping assistant"""
     try:
         data = request.get_json()
         user_message = data.get('message', '')
-        
         if not user_message:
             return jsonify({"error": "No message provided"}), 400
-        
+
         # Add to conversation history
         conversation_history.append({
             "role": "user",
             "message": user_message,
             "timestamp": datetime.now().isoformat()
         })
-        
-        # Generate enhanced AI response with web search
-        ai_response, walmart_results, search_results = enhanced_ai_response(user_message)
-        
+
+        # Generate intelligent conversational response
+        ai_response, matched_products, related_products, extra_data = generate_conversational_response(user_message)
+
+        # Add assistant response to history
         conversation_history.append({
-            "role": "assistant", 
+            "role": "assistant",
             "message": ai_response,
             "timestamp": datetime.now().isoformat()
         })
-        
-        return jsonify({
+
+        # Prepare response with structured data for frontend
+        response_data = {
             "response": ai_response,
-            "conversation_history": conversation_history[-10:],  # Last 10 messages
-            "walmart_results": walmart_results[:3] if walmart_results else [],
-            "web_results": search_results[:3] if search_results else [],
+            "conversation_history": conversation_history[-10:],
+            "cart_items": cart_items,
             "timestamp": datetime.now().isoformat()
-        })
-    
+        }
+
+        # Add extra structured data if available (for cart updates, special displays)
+        if extra_data and isinstance(extra_data, dict):
+            response_data.update(extra_data)
+        
+        # Ensure products are displayed properly in frontend table
+        if matched_products:
+            # Clean product data for display - match the format expected by frontend
+            display_products = []
+            for p in matched_products[:8]:
+                display_product = {
+                    "id": p['id'],
+                    "name": p['name'],
+                    "price": p['price'],
+                    "image_url": p['image_url'],
+                    "category": p['category'],
+                    "rating": p.get('rating', 4.0),
+                    "description": p.get('description', ''),
+                    "stock": p.get('stock', 0),
+                    "tags": p.get('tags', []),
+                    "relevance_score": p.get('relevance_score', 0.5)
+                }
+                display_products.append(display_product)
+            
+            # Use the same field names as the search endpoint
+            response_data["products"] = display_products  # Main field for products display
+            response_data["recommended_products"] = display_products  # Backup for compatibility
+            response_data["related_products"] = related_products[:4] if related_products else []
+            response_data["total_count"] = len(matched_products)
+            
+        else:
+            # When no products found
+            response_data["products"] = []
+            response_data["recommended_products"] = []
+            response_data["related_products"] = []
+            response_data["total_count"] = 0
+            
+        # Log for debugging
+        logger.info(f"Returning {len(response_data.get('products', []))} products for query: {user_message}")
+
+        return jsonify(response_data)
+        
     except Exception as e:
         logger.error(f"Chat error: {str(e)}")
         return jsonify({"error": "Chat processing failed"}), 500
+
+
+def generate_conversational_response(user_message):
+    """Generate intelligent conversational response with context awareness"""
+    user_msg_lower = user_message.lower().strip()
+    mock_products = get_mock_products()
+    
+    # Analyze user intent
+    intent = analyze_user_intent(user_message)
+    
+    # Handle different conversation flows
+    if intent['type'] == 'greeting':
+        return handle_greeting(intent)
+    elif intent['type'] == 'product_search':
+        return handle_product_search(user_message, intent, mock_products)
+    elif intent['type'] == 'add_to_cart':
+        return handle_add_to_cart(user_message, intent, mock_products)
+    elif intent['type'] == 'cart_view':
+        return handle_cart_view(intent)
+    elif intent['type'] == 'product_details':
+        return handle_product_details(user_message, intent, mock_products)
+    elif intent['type'] == 'recommendations':
+        return handle_recommendations(intent, mock_products)
+    elif intent['type'] == 'price_inquiry':
+        return handle_price_inquiry(user_message, intent, mock_products)
+    elif intent['type'] == 'compare':
+        return handle_product_comparison(user_message, intent, mock_products)
+    else:
+        return handle_general_query(user_message, mock_products)
+
+
+def analyze_user_intent(user_message):
+    """Analyze user intent from message"""
+    user_msg_lower = user_message.lower().strip()
+    
+    # Intent patterns
+    intent_patterns = {
+        'greeting': ['hi', 'hello', 'hey', 'good morning', 'good evening', 'good afternoon'],
+        'add_to_cart': ['add to cart', 'buy', 'purchase', 'order', 'add this', 'take this'],
+        'cart_view': ['my cart', 'cart', 'what\'s in cart', 'show cart', 'view cart'],
+        'product_details': ['tell me more', 'details', 'specifications', 'features', 'info about'],
+        'recommendations': ['recommend', 'suggest', 'what should i', 'best for', 'top rated'],
+        'price_inquiry': ['price', 'cost', 'how much', 'budget', 'under', 'below'],
+        'compare': ['compare', 'difference', 'vs', 'better than', 'which is best'],
+        'product_search': ['show me', 'find', 'search', 'looking for', 'need', 'want', 'get me']
+    }
+    
+    # Detect intent
+    for intent_type, patterns in intent_patterns.items():
+        if any(pattern in user_msg_lower for pattern in patterns):
+            return {
+                'type': intent_type,
+                'confidence': 0.8,
+                'entities': extract_entities(user_message)
+            }
+    
+    # Default to product search if no specific intent
+    return {
+        'type': 'product_search',
+        'confidence': 0.6,
+        'entities': extract_entities(user_message)
+    }
+
+
+def extract_entities(user_message):
+    """Extract entities like product names, categories, price ranges"""
+    user_msg_lower = user_message.lower()
+    entities = {}
+    
+    # Extract categories
+    category_keywords = {
+        "Electronics": ["phone", "smartphone", "mobile", "laptop", "computer", "headphones", "earphones", "speaker", "camera", "watch"],
+        "Footwear": ["shoes", "sneakers", "running", "sports", "formal", "casual"],
+        "Clothing": ["shirt", "t-shirt", "jeans", "pants", "dress", "kurta", "polo", "clothing"],
+        "Home & Kitchen": ["air fryer", "fryer", "pan", "cookware", "kitchen", "appliance", "bulb", "fan"],
+        "Beauty & Personal Care": ["face wash", "shampoo", "lipstick", "skincare", "cosmetics", "razor"],
+        "Sports & Fitness": ["sports", "fitness", "gym", "yoga", "cricket", "football", "badminton", "dumbbells"],
+        "Books & Stationery": ["book", "notebook", "pen", "pencil", "stationery", "novel"],
+        "Toys & Baby Products": ["baby", "kids", "toys", "diapers", "children", "lego", "doll"],
+        "Groceries": ["groceries", "food", "salt", "atta", "butter", "milk"]
+    }
+    
+    for category, keywords in category_keywords.items():
+        if any(keyword in user_msg_lower for keyword in keywords):
+            entities['category'] = category
+            break
+    
+    # Extract price range
+    import re
+    price_patterns = [
+        r'under (\d+)',
+        r'below (\d+)',
+        r'less than (\d+)',
+        r'(\d+) to (\d+)',
+        r'between (\d+) and (\d+)'
+    ]
+    
+    for pattern in price_patterns:
+        match = re.search(pattern, user_msg_lower)
+        if match:
+            if len(match.groups()) == 1:
+                entities['max_price'] = int(match.group(1))
+            else:
+                entities['min_price'] = int(match.group(1))
+                entities['max_price'] = int(match.group(2))
+            break
+    
+    # Extract brand names
+    brands = ["nike", "adidas", "apple", "samsung", "sony", "dell", "hp", "lenovo", "philips", "bajaj"]
+    for brand in brands:
+        if brand in user_msg_lower:
+            entities['brand'] = brand.title()
+            break
+    
+    return entities
+
+
+def handle_greeting(intent):
+    """Handle greeting messages"""
+    responses = [
+        "Hello! 👋 I'm your AI Shopping Assistant. I'm here to help you find the perfect products!",
+        "Hi there! 🛍️ Welcome to our store! What can I help you discover today?",
+        "Hey! 😊 Ready to find some amazing deals? What are you looking for?"
+    ]
+    
+    import random
+    response = random.choice(responses)
+    response += "\n\n💡 **I can help you with:**\n"
+    response += "• Finding products by category or name\n"
+    response += "• Comparing prices and features\n"
+    response += "• Adding items to your cart\n"
+    response += "• Personalized recommendations\n"
+    response += "• Answering questions about products\n\n"
+    response += "🔍 **Try asking me:**\n"
+    response += "• 'Show me wireless headphones under ₹5000'\n"
+    response += "• 'I need a laptop for work'\n"
+    response += "• 'What's the best smartphone?'\n"
+    response += "• 'Recommend some kitchen appliances'"
+    
+    return response, [], [], None
+
+
+def handle_product_search(user_message, intent, mock_products):
+    """Handle product search with AI-powered intelligent matching"""
+    if model:
+        # Use Gemini AI for intelligent product filtering
+        matched_products = ai_powered_product_search(user_message, mock_products)
+    else:
+        # Fallback to basic search if AI not available
+        entities = intent['entities']
+        matched_products = []
+        
+        for product in mock_products:
+            score = calculate_product_relevance(user_message, product, entities)
+            if score > 0.3:
+                product['relevance_score'] = score
+                matched_products.append(product)
+        
+        matched_products.sort(key=lambda x: (x['relevance_score'], x['rating']), reverse=True)
+    
+    if matched_products:
+        response = create_ai_product_response(user_message, matched_products)
+        related_products = get_related_products(matched_products[:3], mock_products)
+        
+        # Return structured data for frontend display
+        display_data = {
+            "action": "product_search",
+            "search_query": user_message,
+            "total_results": len(matched_products),
+            "categories_found": list(set(p['category'] for p in matched_products))
+        }
+        
+        return response, matched_products, related_products, display_data
+    else:
+        return handle_no_products_found(user_message, mock_products)
+
+
+def ai_powered_product_search(user_message, mock_products):
+    """Use Gemini AI to intelligently filter products based on user intent"""
+    try:
+        # Create a simplified prompt for Gemini
+        product_list = []
+        for product in mock_products:
+            product_list.append({
+                'id': product['id'],
+                'name': product['name'],
+                'category': product['category'],
+                'price': product['price'],
+                'description': product['description'][:100],  # Truncate description
+                'rating': product['rating'],
+                'tags': product.get('tags', [])
+            })
+        
+        prompt = f"""
+You are an expert product search AI. A customer searched for: "{user_message}"
+
+Product catalog: {str(product_list)}
+
+Task: Return only the product IDs that are highly relevant to the search query.
+- For "phone", "mobile", "smartphone" queries, return phones/smartphones only
+- For "laptop" queries, only return laptops  
+- For "headphones" queries, only return headphones
+- Be strict about relevance but include all relevant products
+
+Return format: ["prod_002", "prod_004"] (JSON array of product IDs only)
+"""
+        
+        response = model.generate_content(prompt)
+        response_text = response.text.strip()
+        logger.info(f"AI response for '{user_message}': {response_text}")
+        
+        # Parse response
+        import json
+        try:
+            if '[' in response_text and ']' in response_text:
+                start = response_text.find('[')
+                end = response_text.rfind(']') + 1
+                json_str = response_text[start:end]
+                selected_ids = json.loads(json_str)
+            else:
+                selected_ids = []
+            
+            logger.info(f"Selected product IDs: {selected_ids}")
+            
+            # Get matching products
+            matched_products = []
+            for product_id in selected_ids:
+                for product in mock_products:
+                    if product['id'] == product_id:
+                        product_copy = product.copy()
+                        product_copy['relevance_score'] = 1.0 - (selected_ids.index(product_id) * 0.1)
+                        matched_products.append(product_copy)
+                        break
+            
+            logger.info(f"Found {len(matched_products)} matching products")
+            return matched_products
+            
+        except Exception as parse_error:
+            logger.error(f"Failed to parse AI response: {parse_error}")
+            return basic_product_search(user_message, mock_products)
+            
+    except Exception as e:
+        logger.error(f"AI search error: {e}")
+        return basic_product_search(user_message, mock_products)
+
+
+def basic_product_search(user_message, mock_products):
+    """Fallback search when AI fails"""
+    user_lower = user_message.lower()
+    matched = []
+    
+    # Define search keywords for better matching
+    phone_keywords = ['phone', 'mobile', 'smartphone', 'iphone', 'galaxy', 'samsung', 'apple']
+    laptop_keywords = ['laptop', 'computer', 'notebook', 'dell', 'hp', 'macbook']
+    headphone_keywords = ['headphone', 'earphone', 'airpod', 'headset', 'earbuds']
+    
+    for product in mock_products:
+        score = 0.0
+        product_text = f"{product['name']} {product['description']} {product['category']} {' '.join(product.get('tags', []))}".lower()
+        
+        # Phone/mobile search
+        if any(keyword in user_lower for keyword in phone_keywords):
+            if any(keyword in product_text for keyword in phone_keywords) or 'electronics' in product['category'].lower():
+                if any(phone_word in product_text for phone_word in ['iphone', 'galaxy', 'smartphone', 'mobile']):
+                    score += 1.0
+        
+        # Laptop search  
+        elif any(keyword in user_lower for keyword in laptop_keywords):
+            if any(keyword in product_text for keyword in laptop_keywords):
+                score += 1.0
+                
+        # Headphone search
+        elif any(keyword in user_lower for keyword in headphone_keywords):
+            if any(keyword in product_text for keyword in headphone_keywords):
+                score += 1.0
+        
+        # General keyword matching
+        else:
+            for word in user_lower.split():
+                if len(word) > 2 and word in product_text:
+                    score += 0.4
+        
+        # Category matching bonus
+        if any(word in product['category'].lower() for word in user_lower.split()):
+            score += 0.3
+            
+        if score > 0.3:
+            product_copy = product.copy()
+            product_copy['relevance_score'] = min(score, 1.0)
+            matched.append(product_copy)
+    
+    logger.info(f"Basic search found {len(matched)} products for '{user_message}'")
+    return sorted(matched, key=lambda x: x['relevance_score'], reverse=True)[:10]
+
+
+def create_ai_product_response(user_message, products):
+    """Create conversational response for products with structured data for frontend"""
+    if not products:
+        return "I couldn't find any products matching your search. Could you try being more specific?"
+    
+    response = f"🎯 **Found {len(products)} great matches for '{user_message}'!**\n\n"
+    
+    for i, product in enumerate(products[:6]):
+        emoji = get_category_emoji(product['category'])
+        discount_price = int(product['price'] * 1.15)  # Show original higher price
+        savings = discount_price - product['price']
+        
+        response += f"{emoji} **{product['name']}**\n"
+        response += f"   💰 ₹{product['price']:,} ~~₹{discount_price:,}~~ (Save ₹{savings:,}!)\n"
+        response += f"   ⭐ {product['rating']}/5 | 📦 {product['stock']} in stock\n"
+        response += f"   📝 {product['description'][:80]}...\n\n"
+    
+    response += "💬 **What next?**\n"
+    response += "• Say 'add [product name] to cart' to buy\n"
+    response += "• Ask 'tell me more about [product]' for details\n"
+    response += "• Try 'show me similar products' for alternatives\n\n"
+    
+    return response
+
+
+def get_category_emoji(category):
+    """Get emoji for product category"""
+    emoji_map = {
+        "Electronics": "📱",
+        "Footwear": "👟", 
+        "Clothing": "👕",
+        "Home & Kitchen": "🏠",
+        "Beauty & Personal Care": "💄",
+        "Sports & Fitness": "⚽",
+        "Books & Stationery": "📚",
+        "Toys & Baby Products": "🧸",
+        "Groceries": "🛒"
+    }
+    return emoji_map.get(category, "🛍️")
+
+
+def calculate_product_relevance(user_message, product, entities):
+    """Calculate how relevant a product is to user query"""
+    score = 0.0
+    user_words = user_message.lower().split()
+    product_text = f"{product['name']} {product['description']} {' '.join(product.get('tags', []))}"
+    
+    # Keyword matching
+    for word in user_words:
+        if len(word) > 2 and word in product_text.lower():
+            score += 0.2
+    
+    # Category matching
+    if 'category' in entities and entities['category'].lower() == product['category'].lower():
+        score += 0.4
+    
+    # Price range matching
+    if 'max_price' in entities and product['price'] <= entities['max_price']:
+        score += 0.3
+    if 'min_price' in entities and product['price'] >= entities['min_price']:
+        score += 0.2
+    
+    # Brand matching
+    if 'brand' in entities and entities['brand'].lower() in product['name'].lower():
+        score += 0.5
+    
+    # Rating boost
+    score += product['rating'] * 0.1
+    
+    return min(score, 1.0)
+
+
+def create_product_search_response(user_message, products, entities):
+    """Create structured response for product search"""
+    response = f"🛍️ **Found {len(products)} products for '{user_message}'**\n\n"
+    
+    # Add filter information
+    if entities:
+        response += "📋 **Applied Filters:**\n"
+        if 'category' in entities:
+            response += f"• Category: {entities['category']}\n"
+        if 'max_price' in entities:
+            response += f"• Max Price: ₹{entities['max_price']}\n"
+        if 'brand' in entities:
+            response += f"• Brand: {entities['brand']}\n"
+        response += "\n"
+    
+    # Group by category for better presentation
+    categories = {}
+    for product in products[:8]:  # Show top 8 products
+        category = product['category']
+        if category not in categories:
+            categories[category] = []
+        categories[category].append(product)
+    
+    # Display products by category
+    for category, category_products in categories.items():
+        response += f"📂 **{category}**\n"
+        for i, p in enumerate(category_products, 1):
+            response += f"   {i}. **{p['name']}** - ₹{p['price']:,}\n"
+            response += f"      💭 {p['description'][:100]}{'...' if len(p['description']) > 100 else ''}\n"
+            response += f"      ⭐ {p['rating']}/5 stars | 📦 {p['stock']} in stock\n"
+            
+            # Add special tags
+            if p['rating'] >= 4.5:
+                response += f"      🏆 **Top Rated**\n"
+            if p['stock'] < 20:
+                response += f"      🔥 **Limited Stock**\n"
+            
+            response += f"      🏷️ ID: {p['id']}\n\n"
+    
+    if len(products) > 8:
+        response += f"➕ **{len(products) - 8} more products available!**\n\n"
+    
+    response += "🎯 **Quick Actions:**\n"
+    response += "• Say 'add [product name] to cart' to purchase\n"
+    response += "• Ask 'tell me more about [product]' for details\n"
+    response += "• Try 'compare [product1] vs [product2]'\n"
+    response += "• Say 'show me cheaper alternatives'"
+    
+    return response
+
+
+def handle_add_to_cart(user_message, intent, mock_products):
+    """Handle adding products to cart with smart recommendations"""
+    # Find the product to add
+    product_to_add = identify_product_from_message(user_message, mock_products)
+    
+    if not product_to_add:
+        return "❌ **Product not found!**\n\nPlease specify which product you'd like to add. You can use the product name or ID.\n\n💡 **Example:** 'Add Sony headphones to cart'", [], [], None
+    
+    # Use the actual cart API endpoint to add item
+    try:
+        # Simulate API call to add to cart (since we're in the same app, we can call the function directly)
+        existing_item = next((item for item in cart_items if item['id'] == product_to_add['id']), None)
+        
+        if existing_item:
+            existing_item['quantity'] += 1
+            cart_action = "updated"
+            quantity_text = f"Quantity increased to {existing_item['quantity']}"
+        else:
+            cart_items.append({
+                "id": product_to_add['id'],
+                "name": product_to_add['name'],
+                "price": product_to_add['price'],
+                "image_url": product_to_add['image_url'],
+                "category": product_to_add['category'],
+                "quantity": 1,
+                "added_at": datetime.now().isoformat()
+            })
+            cart_action = "added"
+            quantity_text = "Added 1 item"
+    
+    except Exception as e:
+        logger.error(f"Error adding to cart: {e}")
+        return "❌ **Failed to add to cart!**\n\nPlease try again or contact support.", [], [], None
+    
+    # Generate smart recommendations
+    recommendations = generate_smart_recommendations(product_to_add, cart_items, mock_products)
+    
+    # Create response with structured data for frontend
+    total_items = sum(item['quantity'] for item in cart_items)
+    total_value = sum(item['price'] * item['quantity'] for item in cart_items)
+    
+    # Text response for chat
+    response = f"✅ **{cart_action.title()} to Cart!**\n\n"
+    response += f"🛒 **{product_to_add['name']}** - ₹{product_to_add['price']:,}\n"
+    response += f"📦 {quantity_text}\n\n"
+    response += f"💰 **Cart Summary:**\n"
+    response += f"• Total Items: {total_items}\n"
+    response += f"• Cart Value: ₹{total_value:,}\n\n"
+    
+    if recommendations:
+        response += "🤖 **Smart Recommendations:**\n"
+        response += "Based on your selection, you might also like:\n\n"
+        for i, rec in enumerate(recommendations[:3], 1):
+            response += f"{i}. **{rec['name']}** - ₹{rec['price']:,}\n"
+            response += f"   💭 {rec['reason']}\n"
+            response += f"   ⭐ {rec['rating']}/5 stars\n\n"
+    
+    response += "🎯 **What's Next?**\n"
+    response += "• Continue shopping: 'Show me more [category]'\n"
+    response += "• View cart: 'Show my cart'\n"
+    response += "• Get recommendations: 'What else do I need?'\n"
+    response += "• Checkout: 'I'm ready to checkout'"
+    
+    # Structured data for frontend display
+    display_data = {
+        "action": "cart_updated",
+        "added_product": {
+            "id": product_to_add['id'],
+            "name": product_to_add['name'],
+            "price": product_to_add['price'],
+            "image_url": product_to_add['image_url'],
+            "category": product_to_add['category'],
+            "rating": product_to_add.get('rating', 4.0),
+            "description": product_to_add.get('description', '')
+        },
+        "cart_summary": {
+            "total_items": total_items,
+            "total_value": total_value,
+            "items": cart_items
+        },
+        "recommendations": [
+            {
+                "id": rec['id'],
+                "name": rec['name'],
+                "price": rec['price'],
+                "image_url": rec['image_url'],
+                "rating": rec['rating'],
+                "reason": rec['reason'],
+                "category": rec['category']
+            } for rec in recommendations[:3]
+        ] if recommendations else []
+    }
+    
+    return response, [], recommendations, display_data
+
+
+def identify_product_from_message(user_message, mock_products):
+    """Identify which product user wants to add to cart"""
+    user_msg_lower = user_message.lower()
+    
+    # Check for product ID
+    for product in mock_products:
+        if product['id'] in user_message:
+            return product
+    
+    # Check for product name words
+    best_match = None
+    max_score = 0
+    
+    for product in mock_products:
+        score = 0
+        product_words = product['name'].lower().split()
+        
+        # Count matching words
+        for word in product_words:
+            if word in user_msg_lower:
+                score += 1
+        
+        # Normalize score
+        score = score / len(product_words)
+        
+        if score > max_score and score > 0.3:
+            max_score = score
+            best_match = product
+    
+    return best_match
+
+
+def generate_smart_recommendations(added_product, cart_items, all_products):
+    """Generate intelligent product recommendations"""
+    recommendations = []
+    
+    # Get complementary products
+    complementary_rules = {
+        "Electronics": {
+            "phone": ["case", "charger", "headphones", "power bank"],
+            "laptop": ["mouse", "keyboard", "bag", "external drive"],
+            "headphones": ["case", "cable", "adapter"],
+            "camera": ["memory card", "tripod", "case", "lens"]
+        },
+        "Clothing": {
+            "shirt": ["pants", "belt", "tie"],
+            "jeans": ["shirt", "belt", "shoes"],
+            "kurta": ["bottom", "dupatta"]
+        },
+        "Footwear": {
+            "shoes": ["socks", "shoe care", "insoles"],
+            "sneakers": ["sports wear", "socks"]
+        },
+        "Home & Kitchen": {
+            "air fryer": ["oil", "recipes", "accessories"],
+            "pan": ["oil", "spices", "utensils"]
+        }
+    }
+    
+    category = added_product['category']
+    product_name_lower = added_product['name'].lower()
+    
+    # Find complementary products
+    if category in complementary_rules:
+        for product_type, complements in complementary_rules[category].items():
+            if product_type in product_name_lower:
+                for complement in complements:
+                    for product in all_products:
+                        if (complement in product['name'].lower() or 
+                            complement in product['description'].lower()) and \
+                           product['id'] != added_product['id']:
+                            recommendations.append({
+                                **product,
+                                'reason': f"Perfect companion for your {added_product['name']}"
+                            })
+                break
+    
+    # Add products from same category (different brands/models)
+    same_category_products = [p for p in all_products 
+                             if p['category'] == category and 
+                             p['id'] != added_product['id'] and
+                             p['price'] <= added_product['price'] * 1.5]
+    
+    for product in same_category_products[:2]:
+        recommendations.append({
+            **product,
+            'reason': f"Another great {category.lower()} option"
+        })
+    
+    # Add frequently bought together (based on cart history)
+    cart_categories = set(item['category'] for item in cart_items)
+    if len(cart_categories) >= 2:
+        cross_category_products = [p for p in all_products 
+                                 if p['category'] not in cart_categories and 
+                                 p['rating'] >= 4.0]
+        
+        if cross_category_products:
+            recommendations.append({
+                **cross_category_products[0],
+                'reason': "Customers who bought similar items also purchased this"
+            })
+    
+    # Remove duplicates and limit
+    seen_ids = set()
+    unique_recommendations = []
+    for rec in recommendations:
+        if rec['id'] not in seen_ids:
+            seen_ids.add(rec['id'])
+            unique_recommendations.append(rec)
+    
+    return unique_recommendations[:5]
+
+
+def handle_cart_view(intent):
+    """Handle cart viewing requests"""
+    if not cart_items:
+        return "🛒 **Your Cart is Empty**\n\nReady to start shopping? I can help you find:\n• Electronics & Gadgets\n• Clothing & Footwear\n• Home & Kitchen Items\n• Sports & Fitness\n• Books & Stationery\n\n💡 **Just tell me what you're looking for!**", [], [], None
+    
+    total_value = sum(item['price'] * item['quantity'] for item in cart_items)
+    total_items = sum(item['quantity'] for item in cart_items)
+    
+    response = f"🛒 **Your Shopping Cart** ({total_items} items)\n\n"
+    
+    # Group by category
+    categories = {}
+    for item in cart_items:
+        category = item.get('category', 'Other')
+        if category not in categories:
+            categories[category] = []
+        categories[category].append(item)
+    
+    for category, items in categories.items():
+        response += f"📂 **{category}**\n"
+        for item in items:
+            response += f"   • **{item['name']}**\n"
+            response += f"     ₹{item['price']:,} × {item['quantity']} = ₹{item['price'] * item['quantity']:,}\n"
+            response += f"     🏷️ ID: {item['id']}\n\n"
+    
+    response += f"💰 **Total: ₹{total_value:,}**\n\n"
+    response += "🎯 **Quick Actions:**\n"
+    response += "• 'Remove [product name]' to delete items\n"
+    response += "• 'Update quantity of [product]' to change amounts\n"
+    response += "• 'What else do I need?' for recommendations\n"
+    response += "• 'Checkout' to proceed with payment\n"
+    response += "• 'Clear cart' to start fresh"
+    
+    return response, [], [], None
+
+
+def handle_no_products_found(user_message, mock_products):
+    """Handle when no products match the search"""
+    # Suggest alternatives
+    popular_products = sorted(mock_products, key=lambda x: x['rating'], reverse=True)[:6]
+    
+    response = f"🔍 **No exact matches found for '{user_message}'**\n\n"
+    response += "But don't worry! Here are some popular items you might like:\n\n"
+    
+    for i, product in enumerate(popular_products, 1):
+        response += f"{i}. **{product['name']}** - ₹{product['price']:,}\n"
+        response += f"   💭 {product['description'][:80]}{'...' if len(product['description']) > 80 else ''}\n"
+        response += f"   ⭐ {product['rating']}/5 stars | 📂 {product['category']}\n\n"
+    
+    response += "💡 **Try these search tips:**\n"
+    response += "• Use broader terms: 'phone' instead of 'iPhone 15 Pro Max'\n"
+    response += "• Include category: 'electronics', 'clothing', 'kitchen'\n"
+    response += "• Mention your budget: 'headphones under ₹5000'\n"
+    response += "• Ask for recommendations: 'What's the best laptop?'"
+    
+    return response, popular_products, [], None
+
+
+def handle_general_query(user_message, mock_products):
+    """Handle general queries and provide helpful responses"""
+    user_msg_lower = user_message.lower()
+    
+    if any(word in user_msg_lower for word in ['help', 'what can you do', 'how does this work']):
+        return handle_help_query()
+    elif any(word in user_msg_lower for word in ['popular', 'trending', 'best sellers']):
+        return handle_popular_products(mock_products)
+    elif any(word in user_msg_lower for word in ['categories', 'what do you sell']):
+        return handle_categories_query(mock_products)
+    else:
+        return handle_fallback_response(user_message, mock_products)
+
+
+def handle_help_query():
+    """Handle help requests"""
+    response = "🤖 **I'm your AI Shopping Assistant!**\n\n"
+    response += "💡 **What I can do:**\n"
+    response += "• 🔍 Find products by name, category, or description\n"
+    response += "• 💰 Filter by price range and features\n"
+    response += "• 🛒 Add items to your cart\n"
+    response += "• 📊 Compare products and features\n"
+    response += "• 🎯 Provide personalized recommendations\n"
+    response += "• 💬 Answer questions about products\n\n"
+    response += "🗣️ **How to talk to me:**\n"
+    response += "• 'Show me wireless headphones under ₹3000'\n"
+    response += "• 'I need a laptop for gaming'\n"
+    response += "• 'Add iPhone to cart'\n"
+    response += "• 'What's the difference between these phones?'\n"
+    response += "• 'Recommend something for cooking'\n\n"
+    response += "🎯 **Ready to shop?** Just tell me what you're looking for!"
+    
+    return response, [], [], None
+
+
+def handle_popular_products(mock_products):
+    """Show popular/trending products"""
+    popular = sorted(mock_products, key=lambda x: x['rating'], reverse=True)[:8]
+    
+    response = "🔥 **Popular Products Right Now**\n\n"
+    
+    categories = {}
+    for product in popular:
+        category = product['category']
+        if category not in categories:
+            categories[category] = []
+        categories[category].append(product)
+    
+    for category, products in categories.items():
+        response += f"📂 **{category}**\n"
+        for product in products:
+            response += f"   🏆 **{product['name']}** - ₹{product['price']:,}\n"
+            response += f"      ⭐ {product['rating']}/5 stars | 📦 {product['stock']} in stock\n\n"
+    
+    response += "🎯 **Want to add any of these to your cart?**\n"
+    response += "Just say 'add [product name] to cart'!"
+    
+    return response, popular, [], None
+
+
+def handle_categories_query(mock_products):
+    """Show available categories"""
+    categories = {}
+    for product in mock_products:
+        category = product['category']
+        if category not in categories:
+            categories[category] = 0
+        categories[category] += 1
+    
+    response = "🏪 **Shop by Category**\n\n"
+    
+    for category, count in sorted(categories.items()):
+        response += f"📂 **{category}** ({count} products)\n"
+        
+        # Show sample products
+        sample_products = [p for p in mock_products if p['category'] == category][:2]
+        for product in sample_products:
+            response += f"   • {product['name']} - ₹{product['price']:,}\n"
+        response += "\n"
+    
+    response += "🎯 **To explore a category, just say:**\n"
+    response += "• 'Show me Electronics'\n"
+    response += "• 'I need something from Home & Kitchen'\n"
+    response += "• 'Browse Clothing options'"
+    
+    return response, [], [], None
+
+
+def handle_fallback_response(user_message, mock_products):
+    """Fallback response for unrecognized queries"""
+    response = "🤔 **I'd love to help you find what you're looking for!**\n\n"
+    response += f"You mentioned: '{user_message}'\n\n"
+    response += "💡 **Here's how I can assist:**\n"
+    response += "• 🔍 **Search products:** 'Show me headphones'\n"
+    response += "• 💰 **Set budget:** 'Find phones under ₹20000'\n"
+    response += "• 🛒 **Add to cart:** 'Add this laptop to cart'\n"
+    response += "• 📊 **Compare:** 'Compare iPhone vs Samsung'\n"
+    response += "• 🎯 **Get recommendations:** 'What's best for gaming?'\n\n"
+    response += "**Popular searches:**\n"
+    response += "• Electronics & Gadgets\n"
+    response += "• Clothing & Fashion\n"
+    response += "• Home & Kitchen\n"
+    response += "• Sports & Fitness\n\n"
+    response += "What would you like to explore?"
+    
+    return response, [], [], None
+
+
+def get_related_products(base_products, all_products):
+    """Get related products based on category and rating"""
+    if not base_products:
+        return []
+    
+    base_categories = set(p['category'] for p in base_products)
+    related = []
+    
+    for product in all_products:
+        if (product['category'] in base_categories and 
+            product not in base_products and 
+            product['rating'] >= 4.0):
+            related.append(product)
+    
+    return sorted(related, key=lambda x: x['rating'], reverse=True)[:5]
 
 
 def search_walmart(query, max_results=5):
@@ -381,35 +1231,9 @@ def enhanced_ai_response(user_message):
         if model:
             response = model.generate_content(full_context)
             return response.text, walmart_results, search_results
-        else:
-            return get_fallback_response(user_message), walmart_results, search_results
             
     except Exception as e:
         logger.error(f"Enhanced AI response error: {e}")
-        return get_fallback_response(user_message), [], []
-
-
-def get_fallback_response(user_message):
-    """Fallback response logic when Gemini is not available"""
-    user_msg_lower = user_message.lower()
-    
-    if any(word in user_msg_lower for word in ["iphone", "phone", "smartphone"]):
-        if "red" in user_msg_lower:
-            return "I found red smartphones for you! Check the Apple iPhone 15 in red color for ₹79,999. Would you like me to add it to your cart?"
-        else:
-            return "I found several smartphones including the latest iPhone 15 for ₹79,999. Would you like to see more options?"
-    elif any(word in user_msg_lower for word in ["headphones", "earphones", "audio"]):
-        return "I found 5 wireless headphones under ₹3000. The top rated is Sony WH-CH720N at ₹2,999. Would you like me to add it to your cart?"
-    elif any(word in user_msg_lower for word in ["electronics", "gadgets", "tech"]):
-        return "Here are popular electronics: iPhone 15, Sony headphones, and gaming mouse. What specific type interests you?"
-    elif any(word in user_msg_lower for word in ["shoes", "nike", "footwear"]):
-        return "I found Nike Air Max 270 running shoes for ₹8,995. Great for sports and casual wear!"
-    elif "add to cart" in user_msg_lower:
-        return "I'll add that item to your cart! Which specific product would you like me to add?"
-    elif any(word in user_msg_lower for word in ["search", "show", "find", "get", "want", "need"]):
-        return "I'm ready to help you find products! I can search for electronics, clothing, shoes, or any other items. What are you looking for?"
-    else:
-        return "Hello! I can help you find and shop for products. Try saying 'show me phones' or 'I need headphones'. What can I help you find today?"
 
 @app.route('/api/search/web', methods=['POST'])
 def web_search_endpoint():
@@ -653,74 +1477,71 @@ def get_recommendations():
 
 def get_mock_products():
     """Return mock product catalog"""
+    # Expanded mock product catalog (50+ items)
     return [
-        {
-            "id": "prod_001",
-            "name": "Sony WH-CH720N Wireless Headphones",
-            "price": 2999,
-            "category": "Electronics",
-            "image_url": "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=300",
-            "description": "Premium wireless noise-canceling headphones with 35-hour battery life",
-            "tags": ["bluetooth", "wireless", "noise-canceling"],
-            "stock": 50,
-            "rating": 4.5
-        },
-        {
-            "id": "prod_002", 
-            "name": "Nike Air Max 270",
-            "price": 8995,
-            "category": "Footwear",
-            "image_url": "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=300",
-            "description": "Comfortable running shoes with Air Max technology",
-            "tags": ["running", "sports", "comfortable"],
-            "stock": 30,
-            "rating": 4.3
-        },
-        {
-            "id": "prod_003",
-            "name": "Apple iPhone 15",
-            "price": 79999,
-            "category": "Electronics", 
-            "image_url": "https://images.unsplash.com/photo-1592750475338-74b7b21085ab?w=300",
-            "description": "Latest iPhone with advanced camera system and A17 chip",
-            "tags": ["smartphone", "apple", "camera"],
-            "stock": 25,
-            "rating": 4.8
-        },
-        {
-            "id": "prod_004",
-            "name": "Instant Pasta - Maggi",
-            "price": 15,
-            "category": "Groceries",
-            "image_url": "https://images.unsplash.com/photo-1621996346565-e3dbc1ece3b1?w=300", 
-            "description": "Quick 2-minute pasta with masala flavor",
-            "tags": ["instant", "pasta", "quick-meal"],
-            "stock": 100,
-            "rating": 4.1
-        },
-        {
-            "id": "prod_005",
-            "name": "Wireless Gaming Mouse",
-            "price": 1999,
-            "category": "Electronics",
-            "image_url": "https://images.unsplash.com/photo-1527864550417-7fd91fc51a46?w=300",
-            "description": "High-precision wireless gaming mouse with RGB lighting",
-            "tags": ["gaming", "wireless", "precision"],
-            "stock": 40,
-            "rating": 4.4
-        },
-        {
-            "id": "prod_006",
-            "name": "Cotton T-Shirt",
-            "price": 599,
-            "category": "Clothing",
-            "image_url": "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=300",
-            "description": "100% cotton comfortable t-shirt in various colors",
-            "tags": ["cotton", "comfortable", "casual"],
-            "stock": 75,
-            "rating": 4.2
-        }
+        # Electronics
+        {"id": "prod_001", "name": "Sony WH-CH720N Wireless Headphones", "price": 2999, "category": "Electronics", "image_url": "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=300", "description": "Premium wireless noise-canceling headphones with 35-hour battery life", "tags": ["bluetooth", "wireless", "noise-canceling"], "stock": 50, "rating": 4.5},
+        {"id": "prod_002", "name": "Apple iPhone 15", "price": 79999, "category": "Electronics", "image_url": "https://images.unsplash.com/photo-1592750475338-74b7b21085ab?w=300", "description": "Latest iPhone with advanced camera system and A17 chip", "tags": ["smartphone", "apple", "camera"], "stock": 25, "rating": 4.8},
+        {"id": "prod_003", "name": "Wireless Gaming Mouse", "price": 1999, "category": "Electronics", "image_url": "https://images.unsplash.com/photo-1527864550417-7fd91fc51a46?w=300", "description": "High-precision wireless gaming mouse with RGB lighting", "tags": ["gaming", "wireless", "precision"], "stock": 40, "rating": 4.4},
+        {"id": "prod_004", "name": "Samsung Galaxy S24 Ultra", "price": 84999, "category": "Electronics", "image_url": "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=300", "description": "Flagship Android smartphone with 200MP camera", "tags": ["smartphone", "android", "camera"], "stock": 30, "rating": 4.7},
+        {"id": "prod_005", "name": "Dell XPS 13 Laptop", "price": 109999, "category": "Electronics", "image_url": "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=300", "description": "Ultra-thin laptop with Intel i7 processor", "tags": ["laptop", "dell", "ultrabook"], "stock": 20, "rating": 4.6},
+        {"id": "prod_006", "name": "JBL Flip 6 Bluetooth Speaker", "price": 8999, "category": "Electronics", "image_url": "https://images.unsplash.com/photo-1465101046530-73398c7f28ca?w=300", "description": "Portable waterproof speaker with deep bass", "tags": ["speaker", "bluetooth", "portable"], "stock": 60, "rating": 4.4},
+        {"id": "prod_007", "name": "Mi Smart Band 7", "price": 3499, "category": "Electronics", "image_url": "https://images.unsplash.com/photo-1519125323398-675f0ddb6308?w=300", "description": "Fitness tracker with heart rate monitor", "tags": ["fitness", "tracker", "smart"], "stock": 80, "rating": 4.3},
+        {"id": "prod_008", "name": "Canon EOS 1500D DSLR Camera", "price": 42999, "category": "Electronics", "image_url": "https://images.unsplash.com/photo-1519183071298-a2962be56693?w=300", "description": "Entry-level DSLR with 24MP sensor", "tags": ["camera", "dslr", "canon"], "stock": 15, "rating": 4.5},
+        {"id": "prod_009", "name": "Amazon Echo Dot (5th Gen)", "price": 4499, "category": "Electronics", "image_url": "https://images.unsplash.com/photo-1515378791036-0648a3ef77b2?w=300", "description": "Smart speaker with Alexa voice assistant", "tags": ["smart", "speaker", "alexa"], "stock": 70, "rating": 4.4},
+        {"id": "prod_010", "name": "HP DeskJet 2331 Printer", "price": 3999, "category": "Electronics", "image_url": "https://images.unsplash.com/photo-1519985176271-adb1088fa94c?w=300", "description": "All-in-one color printer for home use", "tags": ["printer", "hp", "color"], "stock": 35, "rating": 4.2},
+        # Footwear
+        {"id": "prod_011", "name": "Nike Air Max 270", "price": 8995, "category": "Footwear", "image_url": "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=300", "description": "Comfortable running shoes with Air Max technology", "tags": ["running", "sports", "comfortable"], "stock": 30, "rating": 4.3},
+        {"id": "prod_012", "name": "Adidas Ultraboost 22", "price": 12999, "category": "Footwear", "image_url": "https://images.unsplash.com/photo-1519864600265-abb23847ef2c?w=300", "description": "High-performance running shoes with Boost cushioning", "tags": ["running", "adidas", "boost"], "stock": 25, "rating": 4.6},
+        {"id": "prod_013", "name": "Puma Smash v2 Sneakers", "price": 2999, "category": "Footwear", "image_url": "https://images.unsplash.com/photo-1519864600265-abb23847ef2c?w=300", "description": "Classic sneakers for everyday wear", "tags": ["sneakers", "puma", "casual"], "stock": 40, "rating": 4.2},
+        {"id": "prod_014", "name": "Skechers Go Walk 5", "price": 4999, "category": "Footwear", "image_url": "https://images.unsplash.com/photo-1519864600265-abb23847ef2c?w=300", "description": "Lightweight walking shoes with memory foam", "tags": ["walking", "skechers", "memory-foam"], "stock": 35, "rating": 4.4},
+        {"id": "prod_015", "name": "Bata Formal Leather Shoes", "price": 2599, "category": "Footwear", "image_url": "https://images.unsplash.com/photo-1519864600265-abb23847ef2c?w=300", "description": "Elegant formal shoes for office wear", "tags": ["formal", "leather", "bata"], "stock": 20, "rating": 4.1},
+        # Clothing
+        {"id": "prod_016", "name": "Cotton T-Shirt", "price": 599, "category": "Clothing", "image_url": "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=300", "description": "100% cotton comfortable t-shirt in various colors", "tags": ["cotton", "comfortable", "casual"], "stock": 75, "rating": 4.2},
+        {"id": "prod_017", "name": "Levi's 511 Slim Jeans", "price": 2499, "category": "Clothing", "image_url": "https://images.unsplash.com/photo-1512436991641-6745cdb1723f?w=300", "description": "Slim fit jeans for men", "tags": ["jeans", "levis", "slim-fit"], "stock": 50, "rating": 4.5},
+        {"id": "prod_018", "name": "Raymond Formal Shirt", "price": 1299, "category": "Clothing", "image_url": "https://images.unsplash.com/photo-1512436991641-6745cdb1723f?w=300", "description": "Premium formal shirt for office wear", "tags": ["formal", "shirt", "raymond"], "stock": 40, "rating": 4.3},
+        {"id": "prod_019", "name": "Allen Solly Polo T-Shirt", "price": 899, "category": "Clothing", "image_url": "https://images.unsplash.com/photo-1512436991641-6745cdb1723f?w=300", "description": "Classic polo t-shirt for men", "tags": ["polo", "allen-solly", "casual"], "stock": 60, "rating": 4.4},
+        {"id": "prod_020", "name": "W Women Kurta", "price": 1599, "category": "Clothing", "image_url": "https://images.unsplash.com/photo-1512436991641-6745cdb1723f?w=300", "description": "Elegant kurta for women", "tags": ["kurta", "women", "w"], "stock": 45, "rating": 4.5},
+        # Groceries
+        {"id": "prod_021", "name": "Instant Pasta - Maggi", "price": 15, "category": "Groceries", "image_url": "https://images.unsplash.com/photo-1621996346565-e3dbc1ece3b1?w=300", "description": "Quick 2-minute pasta with masala flavor", "tags": ["instant", "pasta", "quick-meal"], "stock": 100, "rating": 4.1},
+        {"id": "prod_022", "name": "Tata Salt", "price": 25, "category": "Groceries", "image_url": "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=300", "description": "Iodized salt for daily use", "tags": ["salt", "tata", "groceries"], "stock": 200, "rating": 4.3},
+        {"id": "prod_023", "name": "Aashirvaad Atta 5kg", "price": 299, "category": "Groceries", "image_url": "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=300", "description": "Whole wheat flour for soft rotis", "tags": ["atta", "wheat", "groceries"], "stock": 80, "rating": 4.4},
+        {"id": "prod_024", "name": "Amul Butter 500g", "price": 275, "category": "Groceries", "image_url": "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=300", "description": "Fresh and creamy butter", "tags": ["butter", "amul", "dairy"], "stock": 60, "rating": 4.5},
+        {"id": "prod_025", "name": "Nestle Everyday Milk Powder", "price": 399, "category": "Groceries", "image_url": "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=300", "description": "Milk powder for tea and coffee", "tags": ["milk", "powder", "nestle"], "stock": 90, "rating": 4.2},
+        # Home & Kitchen
+        {"id": "prod_026", "name": "Philips HD9200 Air Fryer", "price": 8999, "category": "Home & Kitchen", "image_url": "https://images.unsplash.com/photo-1519864600265-abb23847ef2c?w=300", "description": "Healthy air fryer with rapid air technology, 4L capacity", "tags": ["air-fryer", "philips", "healthy-cooking", "kitchen"], "stock": 25, "rating": 4.6},
+        {"id": "prod_027", "name": "Wonderchef Prato Air Fryer", "price": 5999, "category": "Home & Kitchen", "image_url": "https://images.unsplash.com/photo-1519864600265-abb23847ef2c?w=300", "description": "Compact air fryer with digital display, 3L capacity", "tags": ["air-fryer", "wonderchef", "compact", "digital"], "stock": 30, "rating": 4.4},
+        {"id": "prod_028", "name": "Prestige Non-Stick Fry Pan", "price": 799, "category": "Home & Kitchen", "image_url": "https://images.unsplash.com/photo-1519864600265-abb23847ef2c?w=300", "description": "Durable non-stick fry pan for healthy cooking", "tags": ["fry-pan", "prestige", "non-stick"], "stock": 40, "rating": 4.3},
+        {"id": "prod_029", "name": "Milton Thermosteel Flask 1L", "price": 699, "category": "Home & Kitchen", "image_url": "https://images.unsplash.com/photo-1519864600265-abb23847ef2c?w=300", "description": "Keeps beverages hot or cold for hours", "tags": ["flask", "milton", "thermosteel"], "stock": 35, "rating": 4.4},
+        {"id": "prod_030", "name": "Cello Plastic Water Bottle Set", "price": 349, "category": "Home & Kitchen", "image_url": "https://images.unsplash.com/photo-1519864600265-abb23847ef2c?w=300", "description": "Set of 6 BPA-free water bottles", "tags": ["water-bottle", "cello", "plastic"], "stock": 50, "rating": 4.2},
+        {"id": "prod_031", "name": "Bajaj Majesty Air Fryer", "price": 4999, "category": "Home & Kitchen", "image_url": "https://images.unsplash.com/photo-1519864600265-abb23847ef2c?w=300", "description": "Affordable air fryer with 2.5L capacity and preset cooking modes", "tags": ["air-fryer", "bajaj", "affordable", "preset-modes"], "stock": 35, "rating": 4.2},
+        {"id": "prod_032", "name": "Philips LED Bulb 9W", "price": 99, "category": "Home & Kitchen", "image_url": "https://images.unsplash.com/photo-1519864600265-abb23847ef2c?w=300", "description": "Energy-saving LED bulb", "tags": ["led", "bulb", "philips"], "stock": 100, "rating": 4.5},
+        {"id": "prod_033", "name": "Havells Ceiling Fan", "price": 2499, "category": "Home & Kitchen", "image_url": "https://images.unsplash.com/photo-1519864600265-abb23847ef2c?w=300", "description": "High-speed ceiling fan for cool air", "tags": ["fan", "havells", "ceiling"], "stock": 20, "rating": 4.3},
+        # Beauty & Personal Care
+        {"id": "prod_034", "name": "Nivea Men Face Wash", "price": 199, "category": "Beauty & Personal Care", "image_url": "https://images.unsplash.com/photo-1512436991641-6745cdb1723f?w=300", "description": "Deep cleansing face wash for men", "tags": ["face-wash", "nivea", "men"], "stock": 60, "rating": 4.2},
+        {"id": "prod_035", "name": "Lakme Absolute Lipstick", "price": 499, "category": "Beauty & Personal Care", "image_url": "https://images.unsplash.com/photo-1512436991641-6745cdb1723f?w=300", "description": "Long-lasting matte lipstick", "tags": ["lipstick", "lakme", "beauty"], "stock": 45, "rating": 4.4},
+        {"id": "prod_036", "name": "Dove Intense Repair Shampoo", "price": 349, "category": "Beauty & Personal Care", "image_url": "https://images.unsplash.com/photo-1512436991641-6745cdb1723f?w=300", "description": "Shampoo for damaged hair", "tags": ["shampoo", "dove", "hair"], "stock": 70, "rating": 4.3},
+        {"id": "prod_037", "name": "Gillette Fusion Razor", "price": 299, "category": "Beauty & Personal Care", "image_url": "https://images.unsplash.com/photo-1512436991641-6745cdb1723f?w=300", "description": "5-blade razor for smooth shave", "tags": ["razor", "gillette", "shave"], "stock": 55, "rating": 4.5},
+        {"id": "prod_038", "name": "Himalaya Neem Face Pack", "price": 199, "category": "Beauty & Personal Care", "image_url": "https://images.unsplash.com/photo-1512436991641-6745cdb1723f?w=300", "description": "Herbal face pack for clear skin", "tags": ["face-pack", "himalaya", "herbal"], "stock": 40, "rating": 4.2},
+        # Toys & Baby Products
+        {"id": "prod_039", "name": "LEGO Classic Bricks Set", "price": 1499, "category": "Toys & Baby Products", "image_url": "https://images.unsplash.com/photo-1519125323398-675f0ddb6308?w=300", "description": "Creative building blocks for kids", "tags": ["lego", "blocks", "kids"], "stock": 30, "rating": 4.7},
+        {"id": "prod_040", "name": "Hot Wheels Car Pack", "price": 499, "category": "Toys & Baby Products", "image_url": "https://images.unsplash.com/photo-1519125323398-675f0ddb6308?w=300", "description": "Set of 5 die-cast cars", "tags": ["hot-wheels", "cars", "toys"], "stock": 50, "rating": 4.5},
+        {"id": "prod_041", "name": "Fisher-Price Baby Rattle", "price": 199, "category": "Toys & Baby Products", "image_url": "https://images.unsplash.com/photo-1519125323398-675f0ddb6308?w=300", "description": "Colorful rattle for infants", "tags": ["rattle", "fisher-price", "baby"], "stock": 60, "rating": 4.3},
+        {"id": "prod_042", "name": "Barbie Dreamhouse Doll", "price": 2999, "category": "Toys & Baby Products", "image_url": "https://images.unsplash.com/photo-1519125323398-675f0ddb6308?w=300", "description": "Barbie doll with accessories", "tags": ["barbie", "doll", "toys"], "stock": 25, "rating": 4.6},
+        {"id": "prod_043", "name": "Mee Mee Baby Diapers", "price": 499, "category": "Toys & Baby Products", "image_url": "https://images.unsplash.com/photo-1519125323398-675f0ddb6308?w=300", "description": "Pack of 40 ultra-soft diapers", "tags": ["diapers", "mee-mee", "baby"], "stock": 80, "rating": 4.4},
+        # Books & Stationery
+        {"id": "prod_044", "name": "The Alchemist by Paulo Coelho", "price": 299, "category": "Books & Stationery", "image_url": "https://images.unsplash.com/photo-1519125323398-675f0ddb6308?w=300", "description": "Inspirational novel", "tags": ["book", "alchemist", "paulo-coelho"], "stock": 40, "rating": 4.8},
+        {"id": "prod_045", "name": "Classmate Spiral Notebook", "price": 79, "category": "Books & Stationery", "image_url": "https://images.unsplash.com/photo-1519125323398-675f0ddb6308?w=300", "description": "200 pages ruled notebook", "tags": ["notebook", "classmate", "stationery"], "stock": 100, "rating": 4.5},
+        {"id": "prod_046", "name": "Faber-Castell Color Pencils", "price": 199, "category": "Books & Stationery", "image_url": "https://images.unsplash.com/photo-1519125323398-675f0ddb6308?w=300", "description": "Pack of 24 color pencils", "tags": ["color-pencils", "faber-castell", "stationery"], "stock": 60, "rating": 4.6},
+        {"id": "prod_047", "name": "Camlin Geometry Box", "price": 149, "category": "Books & Stationery", "image_url": "https://images.unsplash.com/photo-1519125323398-675f0ddb6308?w=300", "description": "Complete geometry set for students", "tags": ["geometry-box", "camlin", "stationery"], "stock": 80, "rating": 4.4},
+        {"id": "prod_048", "name": "Pilot V5 Hi-Tecpoint Pen", "price": 35, "category": "Books & Stationery", "image_url": "https://images.unsplash.com/photo-1519125323398-675f0ddb6308?w=300", "description": "Smooth writing pen", "tags": ["pen", "pilot", "stationery"], "stock": 120, "rating": 4.3},
+        # Sports & Fitness
+        {"id": "prod_049", "name": "Yonex GR 303 Badminton Racquet", "price": 599, "category": "Sports & Fitness", "image_url": "https://images.unsplash.com/photo-1519125323398-675f0ddb6308?w=300", "description": "Lightweight racquet for beginners", "tags": ["badminton", "yonex", "sports"], "stock": 30, "rating": 4.5},
+        {"id": "prod_050", "name": "Nivia Football Size 5", "price": 499, "category": "Sports & Fitness", "image_url": "https://images.unsplash.com/photo-1519125323398-675f0ddb6308?w=300", "description": "Durable football for outdoor play", "tags": ["football", "nivia", "sports"], "stock": 40, "rating": 4.4},
+        {"id": "prod_051", "name": "Cosco Yoga Mat", "price": 799, "category": "Sports & Fitness", "image_url": "https://images.unsplash.com/photo-1519125323398-675f0ddb6308?w=300", "description": "Non-slip yoga mat for workouts", "tags": ["yoga-mat", "cosco", "fitness"], "stock": 50, "rating": 4.6},
+        {"id": "prod_052", "name": "SG Cricket Bat", "price": 1499, "category": "Sports & Fitness", "image_url": "https://images.unsplash.com/photo-1519125323398-675f0ddb6308?w=300", "description": "English willow cricket bat", "tags": ["cricket-bat", "sg", "sports"], "stock": 20, "rating": 4.7},
+        {"id": "prod_053", "name": "Decathlon Dumbbell Set 10kg", "price": 1299, "category": "Sports & Fitness", "image_url": "https://images.unsplash.com/photo-1519125323398-675f0ddb6308?w=300", "description": "Set of 2 dumbbells for home workouts", "tags": ["dumbbell", "decathlon", "fitness"], "stock": 25, "rating": 4.5}
     ]
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000) 
+    app.run(debug=True, host='0.0.0.0', port=5000)

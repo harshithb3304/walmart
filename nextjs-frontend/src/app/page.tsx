@@ -59,8 +59,10 @@ interface CartItem {
 
   const loadCart = async () => {
     try {
+      console.log('Loading cart...');
       const response = await fetch('http://localhost:5000/api/cart');
       const data = await response.json();
+      console.log('Cart loaded:', data);
       setCartItems(data.items || []);
     } catch (error) {
       console.error('Failed to load cart:', error);
@@ -90,10 +92,28 @@ interface CartItem {
       };
       setMessages(prev => [...prev, assistantMessage]);
 
-      // Trigger product search for relevant queries
-      const searchKeywords = ['headphones', 'phone', 'iphone', 'smartphone', 'electronics', 'gadgets', 'shoes', 'nike', 'mouse', 'gaming', 'search', 'show', 'find'];
-      if (searchKeywords.some(keyword => chatInput.toLowerCase().includes(keyword))) {
-        searchProducts(chatInput);
+      // Check if the chat response includes products and display them
+      if (data.products && data.products.length > 0) {
+        console.log('Products found in chat response:', data.products.length);
+        setProducts(data.products);
+      } else {
+        // Trigger product search for relevant queries if no products in response
+        const searchKeywords = ['headphones', 'phone', 'iphone', 'smartphone', 'electronics', 'gadgets', 'shoes', 'nike', 'mouse', 'gaming', 'search', 'show', 'find'];
+        if (searchKeywords.some(keyword => chatInput.toLowerCase().includes(keyword))) {
+          console.log('No products in chat response, triggering search for:', chatInput);
+          searchProducts(chatInput);
+        }
+      }
+
+      // Check if cart was updated through chat (add to cart via chat)
+      if (data.action === 'cart_updated' || 
+          data.cart_summary || 
+          data.message?.toLowerCase().includes('added to cart') ||
+          data.response?.toLowerCase().includes('added to cart') ||
+          data.response?.includes('✅') ||
+          chatInput.toLowerCase().includes('add') && chatInput.toLowerCase().includes('cart')) {
+        console.log('Cart updated through chat, reloading cart...');
+        loadCart();
       }
     } catch (error) {
       console.error('Chat error:', error);
@@ -104,11 +124,28 @@ interface CartItem {
 
   const searchProducts = async (query: string) => {
     try {
+      console.log('Searching products for query:', query);
       const response = await fetch(`http://localhost:5000/api/products/search?q=${encodeURIComponent(query)}`);
       const data = await response.json();
-      setProducts(data.products || []);
+      console.log('Search API response:', data);
+      
+      if (data.products && data.products.length > 0) {
+        console.log('Setting products from search:', data.products.length);
+        setProducts(data.products);
+      } else {
+        console.log('No products found in search');
+        setProducts([]);
+        // Add message about no results
+        const noResultsMessage = { 
+          role: 'assistant' as const, 
+          message: `I couldn't find any products matching "${query}". Try being more specific or browse our recommended products.`, 
+          timestamp: new Date().toISOString() 
+        };
+        setMessages(prev => [...prev, noResultsMessage]);
+      }
     } catch (error) {
       console.error('Search error:', error);
+      setProducts([]);
     }
   };
 
@@ -124,17 +161,33 @@ interface CartItem {
       });
 
       const data = await response.json();
-      setProducts(data.products || []);
-      
-      // Add message about image search
-      const message = { 
-        role: 'assistant' as const, 
-        message: `I found ${data.products?.length || 0} products matching your image in the ${data.recognized_category} category.`, 
-        timestamp: new Date().toISOString() 
-      };
-      setMessages(prev => [...prev, message]);
+      if (data.products && data.products.length > 0) {
+        setProducts(data.products);
+        
+        // Add message about image search
+        const message = { 
+          role: 'assistant' as const, 
+          message: `I found ${data.products.length} products matching your image in the ${data.recognized_category || 'various'} category. Check the search results on the right!`, 
+          timestamp: new Date().toISOString() 
+        };
+        setMessages(prev => [...prev, message]);
+      } else {
+        // No products found
+        const message = { 
+          role: 'assistant' as const, 
+          message: `I couldn't find any products matching your image. Try uploading a clearer image or describe what you're looking for in the chat.`, 
+          timestamp: new Date().toISOString() 
+        };
+        setMessages(prev => [...prev, message]);
+      }
     } catch (error) {
       console.error('Image search error:', error);
+      const errorMessage = { 
+        role: 'assistant' as const, 
+        message: 'Sorry, there was an error processing your image. Please try again or describe what you\'re looking for in the chat.', 
+        timestamp: new Date().toISOString() 
+      };
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
@@ -142,6 +195,7 @@ interface CartItem {
 
   const addToCart = async (productId: string) => {
     try {
+      console.log('Adding product to cart:', productId);
       const response = await fetch('http://localhost:5000/api/cart/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -149,16 +203,31 @@ interface CartItem {
       });
 
       if (response.ok) {
+        console.log('Product added successfully, reloading cart...');
         loadCart();
         const message = { 
           role: 'assistant' as const, 
-          message: 'Item added to your cart successfully!', 
+          message: 'Item added to your cart successfully! Check your cart in the top-right corner.', 
           timestamp: new Date().toISOString() 
         };
         setMessages(prev => [...prev, message]);
+      } else {
+        console.error('Failed to add to cart, response not ok');
+        const errorMessage = { 
+          role: 'assistant' as const, 
+          message: 'Sorry, there was an error adding the item to your cart. Please try again.', 
+          timestamp: new Date().toISOString() 
+        };
+        setMessages(prev => [...prev, errorMessage]);
       }
     } catch (error) {
       console.error('Add to cart error:', error);
+      const errorMessage = { 
+        role: 'assistant' as const, 
+        message: 'Sorry, there was an error adding the item to your cart. Please try again.', 
+        timestamp: new Date().toISOString() 
+      };
+      setMessages(prev => [...prev, errorMessage]);
     }
   };
 
@@ -246,7 +315,58 @@ interface CartItem {
                     // Auto-send voice input after a short delay
                     setTimeout(() => {
                       if (text.trim()) {
-                        handleSendMessage();
+                        // Manually trigger the send message with the voice input
+                        const sendVoiceMessage = async () => {
+                          const userMessage = { role: 'user' as const, message: text, timestamp: new Date().toISOString() };
+                          setMessages(prev => [...prev, userMessage]);
+                          setChatInput('');
+                          setIsLoading(true);
+
+                          try {
+                            const response = await fetch('http://localhost:5000/api/chat', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ message: text }),
+                            });
+
+                            const data = await response.json();
+                            const assistantMessage = { 
+                              role: 'assistant' as const, 
+                              message: data.response, 
+                              timestamp: new Date().toISOString() 
+                            };
+                            setMessages(prev => [...prev, assistantMessage]);
+
+                            // Check if the chat response includes products and display them
+                            if (data.products && data.products.length > 0) {
+                              console.log('Products found in voice chat response:', data.products.length);
+                              setProducts(data.products);
+                            } else {
+                              // Trigger product search for relevant queries if no products in response
+                              const searchKeywords = ['headphones', 'phone', 'iphone', 'smartphone', 'electronics', 'gadgets', 'shoes', 'nike', 'mouse', 'gaming', 'search', 'show', 'find'];
+                              if (searchKeywords.some(keyword => text.toLowerCase().includes(keyword))) {
+                                console.log('No products in voice chat response, triggering search for:', text);
+                                searchProducts(text);
+                              }
+                            }
+
+                            // Check if cart was updated through voice chat
+                            if (data.action === 'cart_updated' || 
+                                data.cart_summary || 
+                                data.message?.toLowerCase().includes('added to cart') ||
+                                data.response?.toLowerCase().includes('added to cart') ||
+                                data.response?.includes('✅') ||
+                                text.toLowerCase().includes('add') && text.toLowerCase().includes('cart')) {
+                              console.log('Cart updated through voice chat, reloading cart...');
+                              loadCart();
+                            }
+                          } catch (error) {
+                            console.error('Chat error:', error);
+                          } finally {
+                            setIsLoading(false);
+                          }
+                        };
+                        sendVoiceMessage();
                       }
                     }, 500);
                   }}
@@ -271,16 +391,23 @@ interface CartItem {
           <div className="lg:col-span-1">
             <div className="bg-white rounded-xl shadow-lg p-6">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                {products.length > 0 ? 'Search Results' : 'Recommended Products'}
+                {products.length > 0 ? `Search Results (${products.length})` : 'Recommended Products'}
               </h2>
               <div className="space-y-4 max-h-96 overflow-y-auto">
-                {products.map((product) => (
-                  <ProductCard
-                    key={product.id}
-                    product={product}
-                    onAddToCart={() => addToCart(product.id)}
-                  />
-                ))}
+                {products.length > 0 ? (
+                  products.map((product) => (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      onAddToCart={() => addToCart(product.id)}
+                    />
+                  ))
+                ) : (
+                  <div className="text-center text-gray-500 py-8">
+                    <p className="text-sm">💡 Start chatting to discover products!</p>
+                    <p className="text-xs mt-2">Try: "Show me wireless headphones" or "I need a laptop"</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
