@@ -205,12 +205,12 @@ export default function VoiceInterface({ isListening, setIsListening, onVoiceInp
       <button
         onClick={handleButtonClick}
         disabled={!isSupported || isProcessing}
-        className={`p-2 rounded-lg transition-all duration-200 ${
+        className={`p-4 rounded-2xl transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 ${
           isProcessing
-            ? 'bg-yellow-500 text-white animate-pulse'
+            ? 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white animate-pulse'
             : isListening
-            ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
-            : 'bg-blue-500 hover:bg-blue-600 text-white'
+            ? 'bg-gradient-to-r from-red-500 to-pink-500 text-white animate-pulse shadow-red-300'
+            : 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white shadow-purple-300'
           } ${!isSupported || isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
         title={
           isProcessing 
@@ -231,23 +231,29 @@ export default function VoiceInterface({ isListening, setIsListening, onVoiceInp
 
       {/* Error Message Display */}
       {errorMsg && (
-        <div className="bg-red-100 border border-red-300 rounded-lg px-3 py-1 text-sm text-red-800 max-w-xs">
-          {errorMsg}
+        <div className="bg-red-50 border border-red-300 rounded-2xl px-4 py-3 text-sm text-red-800 max-w-xs shadow-lg animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <div className="text-red-500">⚠️</div>
+            {errorMsg}
+          </div>
         </div>
       )}
 
       {/* Transcript Display */}
       {transcript && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-1 text-sm text-blue-800 max-w-xs">
-          <span>Recognized: </span>
-          <span className="font-bold">{transcript}</span>
+        <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-2xl px-4 py-3 text-sm text-purple-800 max-w-xs shadow-lg animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <span className="text-purple-500">🎤</span>
+            <span>Recognized: </span>
+            <span className="font-bold">{transcript}</span>
+          </div>
         </div>
       )}
 
       {/* Status Indicator */}
       {isListening && (
-        <div className="flex items-center gap-1 text-sm text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">
-          <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+        <div className="flex items-center gap-2 text-sm text-white bg-gradient-to-r from-purple-500 to-blue-500 px-4 py-2 rounded-2xl shadow-lg animate-fadeIn">
+          <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
           <span className="font-medium">Listening... 🎤</span>
         </div>
       )}

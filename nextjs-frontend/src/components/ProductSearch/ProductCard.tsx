@@ -56,55 +56,60 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+    <div className="bg-white/90 backdrop-blur-sm border border-purple-100 rounded-2xl p-5 hover:shadow-2xl transition-all duration-300 transform hover:scale-[1.02] group relative overflow-hidden">
+      {/* Decorative background */}
+      <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-purple-100/30 to-blue-100/30 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+      
       {/* Product Image */}
-      <div className="relative mb-3">
+      <div className="relative mb-4">
         <Image
           src={product.image_url || 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=300&h=200&fit=crop'}
           alt={product.name}
           width={300}
           height={128}
-          className="w-full h-32 object-cover rounded-md"
+          className="w-full h-32 object-cover rounded-xl shadow-md group-hover:shadow-lg transition-shadow duration-300"
           unoptimized
         />
-        <div className="absolute top-2 right-2">
-          <button className="bg-white/80 hover:bg-white p-1 rounded-full transition-colors">
-            <Heart className="h-4 w-4 text-gray-600" />
+        <div className="absolute top-3 right-3">
+          <button className="bg-white/90 hover:bg-white p-2 rounded-full transition-all duration-200 transform hover:scale-110 shadow-lg">
+            <Heart className="h-4 w-4 text-gray-600 hover:text-red-500 transition-colors" />
           </button>
         </div>
         {product.stock && product.stock < 10 && (
-          <div className="absolute top-2 left-2 bg-red-500 text-white text-xs px-2 py-1 rounded">
-            Only {product.stock} left
+          <div className="absolute top-3 left-3 bg-gradient-to-r from-red-500 to-pink-500 text-white text-xs px-3 py-1 rounded-full font-semibold shadow-lg animate-pulse">
+            Only {product.stock} left!
           </div>
         )}
       </div>
 
       {/* Product Info */}
-      <div className="space-y-2">
+      <div className="space-y-3 relative z-10">
         <div>
-          <h3 className="font-semibold text-gray-900 text-sm line-clamp-2 leading-tight">
+          <h3 className="font-bold text-gray-900 text-sm line-clamp-2 leading-tight group-hover:text-purple-700 transition-colors">
             {product.name}
           </h3>
-          <p className="text-xs text-gray-600 mt-1">{product.category}</p>
+          <span className="inline-block bg-gradient-to-r from-purple-100 to-blue-100 text-purple-700 text-xs px-2 py-1 rounded-full mt-2 font-medium">
+            {product.category}
+          </span>
         </div>
 
         {/* Rating */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           <div className="flex">
             {renderStars(product.rating)}
           </div>
-          <span className="text-xs text-gray-600">({product.rating})</span>
+          <span className="text-xs text-gray-600 font-medium">({product.rating})</span>
         </div>
 
         {/* Description */}
-        <p className="text-xs text-gray-600 line-clamp-2">
+        <p className="text-xs text-gray-600 line-clamp-2 leading-relaxed">
           {product.description}
         </p>
 
         {/* Price */}
         <div className="flex items-center justify-between">
           <div>
-            <span className="text-lg font-bold text-gray-900">
+            <span className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
               {formatPrice(product.price)}
             </span>
           </div>
@@ -113,9 +118,9 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
         {/* Add to Cart Button */}
         <button
           onClick={onAddToCart}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded-md flex items-center justify-center gap-2 transition-colors text-sm font-medium"
+          className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-all duration-300 text-sm font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 group/btn"
         >
-          <ShoppingCart className="h-4 w-4" />
+          <ShoppingCart className="h-4 w-4 group-hover/btn:animate-bounce" />
           Add to Cart
         </button>
       </div>
