@@ -40,6 +40,7 @@ interface CartItem {
 }
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSpeechActive, setIsSpeechActive] = useState(true);
 
   // Load initial recommendations
   useEffect(() => {
@@ -90,7 +91,7 @@ interface CartItem {
         message: data.response, 
         timestamp: new Date().toISOString() 
       };
-      setMessages(prev => [...prev, assistantMessage]);
+      addMessage(assistantMessage);
 
       // Check if the chat response includes products and display them
       if (data.products && data.products.length > 0) {
@@ -141,7 +142,7 @@ interface CartItem {
           message: `I couldn't find any products matching "${query}". Try being more specific or browse our recommended products.`, 
           timestamp: new Date().toISOString() 
         };
-        setMessages(prev => [...prev, noResultsMessage]);
+        addMessage(noResultsMessage);
       }
     } catch (error) {
       console.error('Search error:', error);
@@ -170,7 +171,7 @@ interface CartItem {
           message: `I found ${data.products.length} products matching your image in the ${data.recognized_category || 'various'} category. Check the search results on the right!`, 
           timestamp: new Date().toISOString() 
         };
-        setMessages(prev => [...prev, message]);
+        addMessage(message);
       } else {
         // No products found
         const message = { 
@@ -178,7 +179,7 @@ interface CartItem {
           message: `I couldn't find any products matching your image. Try uploading a clearer image or describe what you're looking for in the chat.`, 
           timestamp: new Date().toISOString() 
         };
-        setMessages(prev => [...prev, message]);
+        addMessage(message);
       }
     } catch (error) {
       console.error('Image search error:', error);
@@ -187,7 +188,7 @@ interface CartItem {
         message: 'Sorry, there was an error processing your image. Please try again or describe what you\'re looking for in the chat.', 
         timestamp: new Date().toISOString() 
       };
-      setMessages(prev => [...prev, errorMessage]);
+      addMessage(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -210,7 +211,7 @@ interface CartItem {
           message: 'Item added to your cart successfully! Check your cart in the top-right corner.', 
           timestamp: new Date().toISOString() 
         };
-        setMessages(prev => [...prev, message]);
+        addMessage(message);
       } else {
         console.error('Failed to add to cart, response not ok');
         const errorMessage = { 
@@ -218,7 +219,7 @@ interface CartItem {
           message: 'Sorry, there was an error adding the item to your cart. Please try again.', 
           timestamp: new Date().toISOString() 
         };
-        setMessages(prev => [...prev, errorMessage]);
+        addMessage(errorMessage);
       }
     } catch (error) {
       console.error('Add to cart error:', error);
@@ -227,7 +228,26 @@ interface CartItem {
         message: 'Sorry, there was an error adding the item to your cart. Please try again.', 
         timestamp: new Date().toISOString() 
       };
-      setMessages(prev => [...prev, errorMessage]);
+      addMessage(errorMessage);
+    }
+  };
+
+  const stopSpeech = () => {
+    window.speechSynthesis.cancel();
+    setIsSpeechActive(false);
+  };
+
+  const addMessage = (message: Message) => {
+    setMessages(prev => [...prev, message]);
+
+    // Text-to-Speech for AI replies
+    if (message.role === 'assistant' && isSpeechActive) {
+      const utterance = new SpeechSynthesisUtterance(message.message);
+      utterance.lang = 'en-US';
+      utterance.volume = 1;
+      utterance.rate = 1;
+      utterance.pitch = 1;
+      window.speechSynthesis.speak(utterance);
     }
   };
 
@@ -363,7 +383,7 @@ interface CartItem {
                               message: data.response, 
                               timestamp: new Date().toISOString() 
                             };
-                            setMessages(prev => [...prev, assistantMessage]);
+                            addMessage(assistantMessage);
 
                             // Check if the chat response includes products and display them
                             if (data.products && data.products.length > 0) {
@@ -395,7 +415,7 @@ interface CartItem {
                               message: 'Sorry, there was an error processing your voice input. Please try again.', 
                               timestamp: new Date().toISOString() 
                             };
-                            setMessages(prev => [...prev, errorMessage]);
+                            addMessage(errorMessage);
                           } finally {
                             setIsLoading(false);
                           }
@@ -413,6 +433,14 @@ interface CartItem {
                   <Send className="h-5 w-5" />
                 </button>
               </div>
+
+              {/* Stop Speech Button */}
+              <button
+                onClick={stopSpeech}
+                className="mt-4 bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
+              >
+                Stop Speech
+              </button>
             </div>
           </div>
 
