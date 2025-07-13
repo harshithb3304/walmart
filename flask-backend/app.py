@@ -1476,8 +1476,6 @@ def get_recommendations():
         return jsonify({"error": "Failed to get recommendations"}), 500
 
 def get_mock_products():
-    """Return mock product catalog"""
-    # Expanded mock product catalog (50+ items)
     return [
         # Electronics
         {"id": "prod_001", "name": "Sony WH-CH720N Wireless Headphones", "price": 2999, "category": "Electronics", "image_url": "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=300", "description": "Premium wireless noise-canceling headphones with 35-hour battery life", "tags": ["bluetooth", "wireless", "noise-canceling"], "stock": 50, "rating": 4.5},
