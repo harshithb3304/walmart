@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ShoppingCart, Send } from 'lucide-react';
 import VoiceInterface from '@/components/VoiceInterface/VoiceInterface';
 import ImageUpload from '@/components/ProductSearch/ImageUpload';
@@ -29,6 +29,10 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSpeechActive, setIsSpeechActive] = useState(true);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
 interface CartItem {
   id: string;
@@ -38,9 +42,11 @@ interface CartItem {
   quantity: number;
   added_at: string;
 }
-  const [isCartOpen, setIsCartOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSpeechActive, setIsSpeechActive] = useState(true);
+
+  // Auto-scroll to bottom when new messages are added
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   // Load initial recommendations
   useEffect(() => {
@@ -254,28 +260,28 @@ interface CartItem {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-100">
       {/* Header */}
-      <header className="bg-white/80 backdrop-blur-lg shadow-xl border-b border-purple-200/50 sticky top-0 z-40">
+      <header className="bg-white/80 backdrop-blur-lg shadow-xl border-b border-purple-200/50 sticky top-0 z-40 transform transition-all duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
-            <div className="flex items-center">
-              <div className="bg-gradient-to-r from-purple-600 via-blue-600 to-indigo-600 p-3 rounded-2xl shadow-lg transform hover:scale-105 transition-transform duration-200">
+            <div className="flex items-center animate-slide-in-left">
+              <div className="bg-gradient-to-r from-purple-600 via-blue-600 to-indigo-600 p-3 rounded-2xl shadow-lg transform hover:scale-110 hover:rotate-3 transition-all duration-300 animate-floating">
                 <ShoppingCart className="h-8 w-8 text-white" />
               </div>
               <div className="ml-4">
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent animate-fade-in-up">
                   AI Shopping Agent
                 </h1>
-                <p className="text-sm text-gray-600 font-medium">✨ Voice & Visual Shopping Assistant</p>
+                <p className="text-sm text-gray-600 font-medium animate-fade-in-up" style={{animationDelay: '0.2s'}}>✨ Voice & Visual Shopping Assistant</p>
               </div>
             </div>
             <button
               onClick={() => setIsCartOpen(true)}
-              className="relative bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-6 py-3 rounded-2xl flex items-center gap-3 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+              className="relative bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-6 py-3 rounded-2xl flex items-center gap-3 transition-all duration-300 shadow-lg hover:shadow-2xl transform hover:scale-110 hover:-translate-y-1 active:scale-95 animate-slide-in-right"
             >
-              <ShoppingCart className="h-5 w-5" />
+              <ShoppingCart className="h-5 w-5 animate-bounce" />
               <span className="font-semibold">Cart ({cartItems.length})</span>
               {cartItems.length > 0 && (
-                <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-6 w-6 flex items-center justify-center animate-pulse">
+                <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-6 w-6 flex items-center justify-center animate-ping">
                   {cartItems.length}
                 </div>
               )}
@@ -305,44 +311,48 @@ interface CartItem {
               </div>
               
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto space-y-4 mb-6 relative z-10 scrollbar-thin scrollbar-thumb-purple-300 scrollbar-track-purple-100">
+              <div className="flex-1 overflow-y-auto space-y-4 mb-6 relative z-10 scrollbar-thin scrollbar-thumb-purple-300 scrollbar-track-purple-100 min-h-0 max-h-[900px]">
                 {messages.length === 0 && (
-                  <div className="text-center text-gray-600 mt-12 space-y-4">
-                    <div className="text-6xl mb-4">🤖</div>
+                  <div className="text-center text-gray-600 mt-12 space-y-4 animate-fade-in-up">
+                    <div className="text-6xl mb-4 animate-bounce-slow">🤖</div>
                     <p className="text-lg font-semibold text-gray-700">👋 Hi! I'm your AI shopping assistant.</p>
-                    <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-2xl p-6 space-y-3">
-                      <p className="flex items-center gap-2"><span className="text-2xl">🗣️</span> <strong>Voice:</strong> Click the mic and say "show me red iphones"</p>
-                      <p className="flex items-center gap-2"><span className="text-2xl">⌨️</span> <strong>Type:</strong> "I need headphones under 3000"</p>
-                      <p className="flex items-center gap-2"><span className="text-2xl">📷</span> <strong>Visual:</strong> Upload a product image on the right</p>
+                    <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-2xl p-6 space-y-3 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
+                      <p className="flex items-center gap-2 transform hover:translate-x-2 transition-transform duration-200"><span className="text-2xl">🗣️</span> <strong>Voice:</strong> Click the mic and say "show me red iphones"</p>
+                      <p className="flex items-center gap-2 transform hover:translate-x-2 transition-transform duration-200"><span className="text-2xl">⌨️</span> <strong>Type:</strong> "I need headphones under 3000"</p>
+                      <p className="flex items-center gap-2 transform hover:translate-x-2 transition-transform duration-200"><span className="text-2xl">📷</span> <strong>Visual:</strong> Upload a product image on the right</p>
                     </div>
-                    <p className="text-sm mt-4 text-purple-600 font-medium">✨ Try any combination - I understand all!</p>
+                    <p className="text-sm mt-4 text-purple-600 font-medium animate-pulse">✨ Try any combination - I understand all!</p>
                   </div>
                 )}
                 {messages.map((msg, idx) => (
-                  <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fadeIn`}>
-                    <div className={`max-w-xs lg:max-w-md px-6 py-4 rounded-2xl shadow-lg ${
+                  <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-slide-in-${msg.role === 'user' ? 'right' : 'left'}`} style={{animationDelay: `${idx * 0.1}s`}}>
+                    <div className={`max-w-xs lg:max-w-md px-6 py-4 rounded-2xl shadow-lg transform transition-all duration-300 hover:scale-105 hover:shadow-xl ${
                       msg.role === 'user' 
-                        ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white transform hover:scale-105 transition-transform duration-200' 
-                        : 'bg-white border border-gray-200 text-gray-800 shadow-md'
+                        ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700' 
+                        : 'bg-white border border-gray-200 text-gray-800 hover:border-purple-300 hover:shadow-purple-100'
                     }`}>
                       <p className="text-sm leading-relaxed">{msg.message}</p>
+                      <div className="text-xs mt-2 opacity-70">
+                        {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      </div>
                     </div>
                   </div>
                 ))}
                 {isLoading && (
-                  <div className="flex justify-start animate-fadeIn">
-                    <div className="bg-white border border-gray-200 text-gray-800 px-6 py-4 rounded-2xl shadow-lg">
+                  <div className="flex justify-start animate-slide-in-left">
+                    <div className="bg-white border border-gray-200 text-gray-800 px-6 py-4 rounded-2xl shadow-lg transform hover:scale-105 transition-all duration-300">
                       <div className="flex items-center gap-2">
                         <div className="flex space-x-1">
                           <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce"></div>
                           <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
                           <div className="w-2 h-2 bg-indigo-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
                         </div>
-                        <p className="text-sm ml-2">AI is thinking...</p>
+                        <p className="text-sm ml-2 animate-pulse">AI is thinking...</p>
                       </div>
                     </div>
                   </div>
                 )}
+                <div ref={messagesEndRef} />
               </div>
 
               {/* Input Area */}
@@ -353,7 +363,7 @@ interface CartItem {
                   onChange={(e) => setChatInput(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
                   placeholder="Type your message or use voice..."
-                  className="flex-1 border-2 border-purple-200 rounded-2xl px-6 py-4 focus:outline-none focus:ring-4 focus:ring-purple-300/50 focus:border-purple-400 text-gray-800 bg-white/80 backdrop-blur-sm placeholder-gray-500 transition-all duration-200 shadow-lg"
+                  className="flex-1 border-2 border-purple-200 rounded-2xl px-6 py-4 focus:outline-none focus:ring-4 focus:ring-purple-300/50 focus:border-purple-400 text-gray-800 bg-white/80 backdrop-blur-sm placeholder-gray-500 transition-all duration-300 shadow-lg hover:shadow-xl focus:shadow-2xl transform hover:scale-[1.02] focus:scale-[1.02]"
                 />
                 <VoiceInterface 
                   isListening={isListening}
@@ -428,18 +438,18 @@ interface CartItem {
                 <button
                   onClick={handleSendMessage}
                   disabled={!chatInput.trim() || isLoading}
-                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:from-gray-400 disabled:to-gray-500 text-white px-6 py-4 rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:transform-none disabled:cursor-not-allowed"
+                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:from-gray-400 disabled:to-gray-500 text-white px-6 py-4 rounded-2xl transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-110 active:scale-95 disabled:transform-none disabled:cursor-not-allowed"
                 >
-                  <Send className="h-5 w-5" />
+                  <Send className={`h-5 w-5 transition-transform duration-200 ${isLoading ? 'animate-spin' : ''}`} />
                 </button>
               </div>
 
               {/* Stop Speech Button */}
               <button
                 onClick={stopSpeech}
-                className="mt-4 bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
+                className="mt-4 bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-2xl transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 hover:bg-gradient-to-r hover:from-red-500 hover:to-pink-500"
               >
-                Stop Speech
+                🔇 Stop Speech
               </button>
             </div>
           </div>
@@ -447,13 +457,14 @@ interface CartItem {
           {/* Right Column - Products on Top, Image Upload on Bottom */}
           <div className="flex flex-col gap-8">
             {/* Product Results */}
-            <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-2xl border border-white/20 p-8 relative overflow-hidden flex-1">
+            <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-2xl border border-white/20 p-8 relative overflow-hidden flex-1 transform hover:scale-[1.01] transition-all duration-300">
               {/* Decorative background */}
-              <div className="absolute top-0 left-0 w-20 h-20 bg-gradient-to-br from-purple-200/20 to-blue-200/20 rounded-full blur-2xl"></div>
+              <div className="absolute top-0 left-0 w-20 h-20 bg-gradient-to-br from-purple-200/20 to-blue-200/20 rounded-full blur-2xl animate-pulse"></div>
+              <div className="absolute bottom-0 right-0 w-16 h-16 bg-gradient-to-tr from-indigo-200/20 to-purple-200/20 rounded-full blur-2xl animate-pulse" style={{animationDelay: '1s'}}></div>
               
               <div className="flex items-center gap-3 mb-6 relative z-10">
-                <div className="p-2 bg-gradient-to-r from-purple-500 to-blue-500 rounded-xl">
-                  <div className="w-3 h-3 bg-white rounded-full"></div>
+                <div className="p-2 bg-gradient-to-r from-purple-500 to-blue-500 rounded-xl animate-pulse">
+                  <div className="w-3 h-3 bg-white rounded-full animate-ping"></div>
                 </div>
                 <h2 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
                   {products.length > 0 ? `🔍 Search Results (${products.length})` : '⭐ Recommended Products'}
@@ -463,7 +474,7 @@ interface CartItem {
               <div className="space-y-4 max-h-[400px] overflow-y-auto relative z-10 scrollbar-thin scrollbar-thumb-purple-300 scrollbar-track-purple-100">
                 {products.length > 0 ? (
                   products.map((product, index) => (
-                    <div key={product.id} className="animate-fadeIn" style={{animationDelay: `${index * 0.1}s`}}>
+                    <div key={product.id} className="animate-slide-in-up transform hover:scale-[1.02] transition-all duration-300" style={{animationDelay: `${index * 0.1}s`}}>
                       <ProductCard
                         product={product}
                         onAddToCart={() => addToCart(product.id)}
@@ -471,13 +482,13 @@ interface CartItem {
                     </div>
                   ))
                 ) : (
-                  <div className="text-center text-gray-500 py-12 space-y-4">
-                    <div className="text-5xl mb-4">🛍️</div>
+                  <div className="text-center text-gray-500 py-12 space-y-4 animate-fade-in-up">
+                    <div className="text-5xl mb-4 animate-bounce-slow">🛍️</div>
                     <p className="text-lg font-semibold text-gray-600">💡 Start chatting to discover products!</p>
-                    <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-2xl p-4 space-y-2">
-                      <p className="text-sm text-purple-600 font-medium">✨ Try asking:</p>
-                      <p className="text-xs text-gray-600">"Show me wireless headphones"</p>
-                      <p className="text-xs text-gray-600">"I need a laptop"</p>
+                    <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-2xl p-4 space-y-2 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
+                      <p className="text-sm text-purple-600 font-medium animate-pulse">✨ Try asking:</p>
+                      <p className="text-xs text-gray-600 transform hover:translate-x-2 transition-transform duration-200">"Show me wireless headphones"</p>
+                      <p className="text-xs text-gray-600 transform hover:translate-x-2 transition-transform duration-200">"I need a laptop"</p>
                     </div>
                   </div>
                 )}
