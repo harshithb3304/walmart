@@ -17,9 +17,11 @@ interface CartSidebarProps {
   onClose: () => void;
   items: CartItem[];
   onUpdateCart: () => void;
+  overlayStyle?: React.CSSProperties;
+  cartStyle?: React.CSSProperties;
 }
 
-export default function CartSidebar({ isOpen, onClose, items, onUpdateCart }: CartSidebarProps) {
+export default function CartSidebar({ isOpen, onClose, items, onUpdateCart, overlayStyle, cartStyle }: CartSidebarProps) {
   const totalPrice = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -88,12 +90,16 @@ export default function CartSidebar({ isOpen, onClose, items, onUpdateCart }: Ca
     <>
       {/* Backdrop */}
       <div 
-        className="fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity"
+        className="fixed inset-0 z-40 transition-opacity"
+        style={overlayStyle}
         onClick={onClose}
       />
       
       {/* Sidebar */}
-      <div className="fixed right-0 top-0 h-full w-96 bg-white shadow-xl z-50 transform transition-transform">
+      <div 
+        className="fixed right-0 top-0 h-full w-96 bg-white shadow-xl z-50 transform transition-transform"
+        style={cartStyle}
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div className="flex items-center gap-2">
@@ -213,4 +219,4 @@ export default function CartSidebar({ isOpen, onClose, items, onUpdateCart }: Ca
       </div>
     </>
   );
-} 
+}
