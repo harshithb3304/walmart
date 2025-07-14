@@ -83,12 +83,12 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
       </div>
 
       {/* Product Info */}
-      <div className="space-y-3 relative z-10">
-        <div>
+      <div className=" relative z-10">
+        <div className='flex flex-row items-center justify-between'>
           <h3 className="font-bold text-gray-900 text-sm line-clamp-2 leading-tight group-hover:text-purple-700 transition-colors">
             {product.name}
           </h3>
-          <span className="inline-block bg-gradient-to-r from-purple-100 to-blue-100 text-purple-700 text-xs px-2 py-1 rounded-full mt-2 font-medium">
+          <span className="inline-block bg-gradient-to-r from-purple-100 to-blue-100 text-purple-700 text-xs px-2 py-1 rounded-full font-medium">
             {product.category}
           </span>
         </div>
@@ -109,7 +109,7 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
         {/* Price */}
         <div className="flex items-center justify-between">
           <div>
-            <span className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+            <span className="text-md font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
               {formatPrice(product.price)}
             </span>
           </div>

@@ -14,8 +14,7 @@ export default function ImageUpload({ onImageUpload }: ImageUploadProps) {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleDragOver = (e: React.DragEvent) =>
-     {   
+  const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(true);
   };
@@ -28,7 +27,7 @@ export default function ImageUpload({ onImageUpload }: ImageUploadProps) {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    
+
     const files = e.dataTransfer.files;
     if (files[0] && files[0].type.startsWith('image/')) {
       handleFileUpload(files[0]);
@@ -44,14 +43,14 @@ export default function ImageUpload({ onImageUpload }: ImageUploadProps) {
 
   const handleFileUpload = async (file: File) => {
     setIsUploading(true);
-    
+
     // Create preview
     const reader = new FileReader();
     reader.onload = (e) => {
       setSelectedImage(e.target?.result as string);
     };
     reader.readAsDataURL(file);
-    
+
     // Upload to backend
     try {
       await onImageUpload(file);
@@ -70,11 +69,11 @@ export default function ImageUpload({ onImageUpload }: ImageUploadProps) {
   };
 
   return (
-    <div className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-2xl border border-white/20 p-8 relative overflow-hidden">
+    <div className="h-full bg-white/90 backdrop-blur-sm rounded-3xl shadow-2xl border border-white/20 p-8 relative overflow-hidden">
       {/* Decorative background */}
-      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-purple-100/20 to-blue-100/20 rounded-full blur-3xl"></div>
-      
-      <div className="flex items-center gap-3 mb-6 relative z-10">
+      {/* <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-purple-100/20 to-blue-100/20 rounded-full blur-3xl"></div> */}
+
+      <div className="mb-2 flex items-center gap-3 relative z-10">
         <div className="p-2 bg-gradient-to-r from-purple-500 to-blue-500 rounded-xl">
           <Camera className="h-5 w-5 text-white" />
         </div>
@@ -82,47 +81,44 @@ export default function ImageUpload({ onImageUpload }: ImageUploadProps) {
           📷 Visual Search
         </h2>
       </div>
-      
+
       {!selectedImage ? (
         <div
-          className={`border-2 border-dashed rounded-2xl p-12 text-center transition-all duration-300 relative z-10 ${
-            dragOver 
-              ? 'border-purple-400 bg-gradient-to-br from-purple-50 to-blue-50 transform scale-105' 
+          className={`rounded-2xl border-2 border-dashed p-2 text-center transition-all duration-300 relative z-10 flex items-center justify-center min-h-[250px] max-w-[470px] mx-auto ${dragOver
+              ? 'border-purple-400 bg-gradient-to-br from-purple-50 to-blue-50 transform scale-105'
               : 'border-purple-200 hover:border-purple-300 hover:bg-gradient-to-br hover:from-purple-25 hover:to-blue-25'
-          }`}
+            }`}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
-          <div className="flex flex-col items-center space-y-6">
-            <div className={`p-4 rounded-2xl transition-all duration-300 ${
-              dragOver 
-                ? 'bg-gradient-to-r from-purple-500 to-blue-500 transform scale-110' 
+          <div className="flex flex-col items-center space-y-4 w-full">
+            <div className={`p-2 rounded-2xl transition-all duration-300 ${dragOver
+                ? 'bg-gradient-to-r from-purple-500 to-blue-500 transform scale-105'
                 : 'bg-gradient-to-r from-purple-100 to-blue-100'
-            }`}>
-              <Upload className={`h-10 w-10 transition-colors ${
-                dragOver ? 'text-white' : 'text-purple-600'
-              }`} />
+              }`}>
+              <Upload className={`h-5 w-5 transition-colors ${dragOver ? 'text-white' : 'text-purple-600'
+                }`} />
             </div>
-            
+
             <div>
-              <p className="text-xl font-bold text-gray-800 mb-2">✨ Upload Product Image</p>
-              <p className="text-sm text-gray-600">
+              <p className="text-base font-bold text-gray-800 mb-1">✨ Upload Product Image</p>
+              <p className="text-xs text-gray-600">
                 Drag & drop an image or click to browse
               </p>
-              <p className="text-xs text-purple-600 mt-2">
+              <p className="text-xs text-purple-600 mt-1">
                 🔍 Find similar products instantly!
               </p>
             </div>
-            
+
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-8 py-4 rounded-2xl flex items-center gap-3 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 font-semibold"
+              className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-4 py-2 rounded-xl flex items-center gap-2 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 font-semibold text-xs"
             >
-              <Camera className="h-5 w-5" />
+              <Camera className="h-4 w-4" />
               Choose Image
             </button>
-            
+
             <input
               ref={fileInputRef}
               type="file"
@@ -130,7 +126,7 @@ export default function ImageUpload({ onImageUpload }: ImageUploadProps) {
               onChange={handleFileSelect}
               className="hidden"
             />
-            
+
             <p className="text-xs text-gray-500">
               Supports: JPG, PNG, GIF (Max 10MB)
             </p>
@@ -157,7 +153,7 @@ export default function ImageUpload({ onImageUpload }: ImageUploadProps) {
               </button>
             </div>
           </div>
-          
+
           {isUploading && (
             <div className="flex items-center justify-center py-6">
               <div className="relative">
@@ -169,7 +165,7 @@ export default function ImageUpload({ onImageUpload }: ImageUploadProps) {
               </span>
             </div>
           )}
-          
+
           <div className="flex gap-3">
             <button
               onClick={() => fileInputRef.current?.click()}
@@ -187,8 +183,8 @@ export default function ImageUpload({ onImageUpload }: ImageUploadProps) {
           </div>
         </div>
       )}
-      
-      <div className="mt-6 relative">
+
+      {/* <div className="mt-6 relative">
         <div className="absolute inset-0 bg-gradient-to-r from-blue-100 to-purple-100 rounded-xl opacity-80"></div>
         <div className="relative bg-white/70 backdrop-blur-sm rounded-xl p-4 border border-white/30">
           <div className="flex items-start gap-3">
@@ -200,13 +196,13 @@ export default function ImageUpload({ onImageUpload }: ImageUploadProps) {
                 🔍 Visual Search Powered by AI
               </p>
               <p className="text-xs text-gray-600 leading-relaxed">
-                Upload an image and our AI will identify products and find similar items in our catalog. 
+                Upload an image and our AI will identify products and find similar items in our catalog.
                 Get instant results with smart visual recognition technology.
               </p>
             </div>
           </div>
         </div>
-      </div>
+      </div> */}
     </div>
   );
 } 
